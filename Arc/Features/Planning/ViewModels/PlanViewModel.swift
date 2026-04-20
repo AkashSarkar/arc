@@ -97,6 +97,7 @@ final class PlanViewModel {
 
         let cleanNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let locationCoordinates = "\(location.latitude.formatted(.number.precision(.fractionLength(5)))), \(location.longitude.formatted(.number.precision(.fractionLength(5))))"
+        let cachedContextSummary = cachedContextPromptSummary(for: location)
 
         var promptSections = [
             "Create a \(outputIntent.defaultShotCount)-shot plan optimized for a \(outputIntent.promptLabel).",
@@ -107,11 +108,135 @@ final class PlanViewModel {
             "Do not add headings, intro copy, markdown tables, or closing notes.",
         ]
 
+        if let cachedContextSummary {
+            promptSections.append("Use the cached location context below when it helps you choose subjects, angles, sequencing, timing, and lighting. Stay grounded in it and do not invent unsupported details.")
+            promptSections.append(cachedContextSummary)
+        }
+
         if !cleanNotes.isEmpty {
             promptSections.append("Additional creative notes: \(cleanNotes)")
         }
 
         return promptSections.joined(separator: "\n")
+    }
+
+    private func cachedContextPromptSummary(for location: ShootLocation) -> String? {
+        guard let contextBundle = LocationContextBundle.decode(from: location.enrichmentJSON) else {
+            return nil
+        }
+
+        var lines: [String] = []
+
+        let highlightSummary = contextBundle.highlights
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .prefix(3)
+
+        if !highlightSummary.isEmpty {
+            lines.append("Context highlights: \(Array(highlightSummary).joined(separator: " "))")
+        }
+
+        let pointsOfInterestSummary = contextBundle.pointsOfInterest.prefix(5).map { pointOfInterest in
+            let category = pointOfInterest.category.lowercased()
+
+            if let distanceMeters = pointOfInterest.distanceMeters {
+                return "\(pointOfInterest.name) (\(category), \(Int(distanceMeters.rounded()))m)"
+            }
+
+            return "\(pointOfInterest.name) (\(category))"
+        }
+
+        if !pointsOfInterestSummary.isEmpty {
+            lines.append("Nearby points of interest: \(pointsOfInterestSummary.joined(separator: "; ")).")
+        }
+
+        if let wikipedia = contextBundle.wikipedia {
+            var wikipediaLine = "Nearby landmark context: \(wikipedia.title)"
+
+            if let detail = normalizedPromptValue(wikipedia.detail) {
+                wikipediaLine += " - \(detail)"
+            }
+
+            let summary = truncatedPromptText(wikipedia.summary, limit: 220)
+            if !summary.isEmpty {
+                wikipediaLine += ". \(summary)"
+            }
+
+            if let distanceMeters = wikipedia.distanceMeters {
+                wikipediaLine += " (\(Int(distanceMeters.rounded()))m away)."
+            } else {
+                wikipediaLine += "."
+            }
+
+            lines.append(wikipediaLine)
+        }
+
+        if let weather = contextBundle.weather {
+            lines.append("Weather outlook: \(weather.summary)")
+        }
+
+        if let sunMoonLine = sunMoonPromptLine(from: contextBundle.sunMoon) {
+            lines.append(sunMoonLine)
+        }
+
+        if !contextBundle.referenceImages.isEmpty {
+            lines.append("Reference imagery: \(contextBundle.referenceImages.count) nearby public reference photos were cached.")
+        }
+
+        guard !lines.isEmpty else {
+            return nil
+        }
+
+        return (["Cached location context:"] + lines).joined(separator: "\n")
+    }
+
+    private func sunMoonPromptLine(from sunMoon: LocationSunMoonSummary) -> String? {
+        var components: [String] = []
+
+        if let sunrise = sunMoon.sunrise {
+            components.append("sunrise \(sunrise.formatted(date: .omitted, time: .shortened))")
+        }
+
+        if let sunset = sunMoon.sunset {
+            components.append("sunset \(sunset.formatted(date: .omitted, time: .shortened))")
+        }
+
+        if let goldenHourMorningStart = sunMoon.goldenHourMorningStart,
+           let goldenHourMorningEnd = sunMoon.goldenHourMorningEnd {
+            components.append(
+                "morning golden hour \(goldenHourMorningStart.formatted(date: .omitted, time: .shortened)) to \(goldenHourMorningEnd.formatted(date: .omitted, time: .shortened))"
+            )
+        }
+
+        if let goldenHourEveningStart = sunMoon.goldenHourEveningStart,
+           let goldenHourEveningEnd = sunMoon.goldenHourEveningEnd {
+            components.append(
+                "evening golden hour \(goldenHourEveningStart.formatted(date: .omitted, time: .shortened)) to \(goldenHourEveningEnd.formatted(date: .omitted, time: .shortened))"
+            )
+        }
+
+        components.append("moon \(sunMoon.moonPhaseName), \(Int(sunMoon.moonIlluminationPercent.rounded()))% illumination")
+
+        return components.isEmpty ? nil : "Light and sky: \(components.joined(separator: "; "))."
+    }
+
+    private func normalizedPromptValue(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedValue.isEmpty ? nil : trimmedValue
+    }
+
+    private func truncatedPromptText(_ value: String, limit: Int) -> String {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedValue.count > limit else {
+            return trimmedValue
+        }
+
+        let cutoffIndex = trimmedValue.index(trimmedValue.startIndex, offsetBy: limit)
+        return String(trimmedValue[..<cutoffIndex]).trimmingCharacters(in: .whitespacesAndNewlines) + "..."
     }
 
     private func shootWindowPromptText() -> String? {

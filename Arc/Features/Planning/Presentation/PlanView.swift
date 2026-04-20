@@ -18,9 +18,14 @@ struct PlanView: View {
                 ArcHeroHeader(
                     systemImage: "sparkles.rectangle.stack",
                     title: "Plan Shoot",
-                    subtitle: "Pick output and timing, then generate a draft for this location."
+                    subtitle: "Pick output and timing, then generate a draft for this location. Cached context is included when available."
                 ) {
                     PlanLocationContextRow(locationName: location.name)
+
+                    PlanPromptContextRow(
+                        hasCachedContext: hasCachedContext,
+                        lastEnrichedAt: location.lastEnrichedAt
+                    )
 
                     HStack(spacing: 10) {
                         PlanFilterMenu(
@@ -202,6 +207,10 @@ struct PlanView: View {
 
         return "Saved automatically on \(createdAt.formatted(date: .abbreviated, time: .shortened))."
     }
+
+    private var hasCachedContext: Bool {
+        !location.enrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 }
 
 private enum PlanNavigationTarget: String, Identifiable {
@@ -229,6 +238,58 @@ private struct PlanLocationContextRow: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
+private struct PlanPromptContextRow: View {
+    let hasCachedContext: Bool
+    let lastEnrichedAt: Date?
+
+    private var title: String {
+        hasCachedContext ? "Cached context will be used" : "No cached context in this prompt"
+    }
+
+    private var subtitle: String {
+        if let lastEnrichedAt, hasCachedContext {
+            return "Using the cached bundle from \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened)) to ground landmarks, timing, and conditions."
+        }
+
+        return "Generate context from the location detail screen if you want landmarks, weather, and sun/moon timing included."
+    }
+
+    private var systemImage: String {
+        hasCachedContext ? "checkmark.circle.fill" : "exclamationmark.circle"
+    }
+
+    private var tint: Color {
+        hasCachedContext ? ArcPalette.tint : ArcPalette.glowPrimary
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

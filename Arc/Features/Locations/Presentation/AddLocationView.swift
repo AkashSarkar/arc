@@ -32,11 +32,11 @@ struct LocationEditorView: View {
                     ArcHeroHeader(
                         systemImage: viewModel.isEditing ? "slider.horizontal.3" : "location.viewfinder",
                         title: viewModel.navigationTitle,
-                        subtitle: "Start from your current GPS, search for a place, or nudge the map until the pin matches the exact shoot spot.",
+                        subtitle: "Use GPS, search, or the map pin to save the exact shoot spot.",
                         badges: [
-                            ArcHeroBadge(label: "Current GPS", systemImage: "location.fill"),
-                            ArcHeroBadge(label: "Map pin", systemImage: "mappin.circle"),
-                            ArcHeroBadge(label: "Search", systemImage: "magnifyingglass")
+                            ArcHeroBadge(label: "GPS", systemImage: "location.fill"),
+                            ArcHeroBadge(label: "Search", systemImage: "magnifyingglass"),
+                            ArcHeroBadge(label: "Pin", systemImage: "mappin.circle")
                         ]
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
@@ -51,10 +51,10 @@ struct LocationEditorView: View {
                         ArcFeatureTitle(
                             systemImage: "text.cursor",
                             title: "Location Name",
-                            subtitle: "The title can come from GPS, search, or the pin, then be refined by hand."
+                            subtitle: nil
                         )
 
-                        editorTextField("Name", text: $viewModel.name)
+                        editorTextField("Location Name", text: $viewModel.name)
                             .textInputAutocapitalization(.words)
 
                         Button {
@@ -63,7 +63,7 @@ struct LocationEditorView: View {
                             }
                         } label: {
                             Label(
-                                viewModel.isResolvingCurrentLocation ? "Resolving current GPS..." : "Use Current GPS",
+                                viewModel.isResolvingCurrentLocation ? "Finding current location..." : "Use Current Location",
                                 systemImage: "location.fill"
                             )
                             .frame(maxWidth: .infinity)
@@ -76,6 +76,7 @@ struct LocationEditorView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -85,7 +86,7 @@ struct LocationEditorView: View {
                         ArcFeatureTitle(
                             systemImage: "magnifyingglass",
                             title: "Search",
-                            subtitle: "Look up a place or address, then jump the pin directly to that result."
+                            subtitle: nil
                         )
 
                         HStack(alignment: .center, spacing: 10) {
@@ -151,12 +152,9 @@ struct LocationEditorView: View {
                                     .buttonStyle(.plain)
                                 }
                             }
-                        } else if !viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text("Use Search to jump to a result, or pick a suggestion when one appears.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                         }
                     }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -166,7 +164,7 @@ struct LocationEditorView: View {
                         ArcFeatureTitle(
                             systemImage: "map",
                             title: "Map Pin",
-                            subtitle: "Pan the map until the centered pin lands on the exact spot you want to save."
+                            subtitle: nil
                         )
 
                         LocationMapPicker(
@@ -178,19 +176,24 @@ struct LocationEditorView: View {
                             }
                         )
 
-                        Text(viewModel.coordinateSummary)
-                            .font(.caption)
+                        Label(viewModel.coordinateSummary, systemImage: "location.north.line")
+                            .font(.callout.monospacedDigit())
                             .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                            }
 
                         if viewModel.isReverseGeocoding {
-                            ProgressView("Updating place name...")
+                            ProgressView("Updating name...")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-
-                        Text("Search, GPS, and manual coordinates all stay synced with this pin.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -199,8 +202,8 @@ struct LocationEditorView: View {
                     ArcFeatureCard {
                         ArcFeatureTitle(
                             systemImage: "number",
-                            title: "Manual Coordinates",
-                            subtitle: "Use direct latitude and longitude entry when you need exact numeric control."
+                            title: "Coordinates",
+                            subtitle: nil
                         )
 
                         editorTextField("Latitude", text: $viewModel.latitudeText)
@@ -209,6 +212,7 @@ struct LocationEditorView: View {
                         editorTextField("Longitude", text: $viewModel.longitudeText)
                             .keyboardType(.decimalPad)
                     }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -217,8 +221,10 @@ struct LocationEditorView: View {
                     Section {
                         ArcFeatureCard(accent: .red) {
                             Text(errorMessage)
+                                .font(.subheadline)
                                 .foregroundStyle(.red)
                         }
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                     }
                 }
             }
@@ -302,7 +308,7 @@ private struct LocationMapPicker: View {
             MapCompass()
             MapScaleView()
         }
-        .frame(minHeight: 280)
+        .frame(minHeight: 380)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: Color.black.opacity(0.08), radius: 16, y: 10)
         .overlay(alignment: .center) {

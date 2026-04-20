@@ -11,8 +11,7 @@ struct LocationListView: View {
 
     private var heroBadges: [ArcHeroBadge] {
         [
-            ArcHeroBadge(label: "\(locations.count) saved", systemImage: "bookmark"),
-            ArcHeroBadge(label: "GPS, map, search", systemImage: "location.magnifyingglass")
+            ArcHeroBadge(label: "\(locations.count) saved", systemImage: "bookmark")
         ]
     }
 
@@ -21,8 +20,8 @@ struct LocationListView: View {
             Section {
                 ArcHeroHeader(
                     systemImage: "mountain.2.fill",
-                    title: "Scout Your Next Shoot",
-                    subtitle: "Save places with GPS, map pin, or search, then move into planning once the location feels right.",
+                    title: "Scout Locations",
+                    subtitle: "Save a place, then move into planning when it feels right.",
                     badges: heroBadges
                 )
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
@@ -51,7 +50,7 @@ struct LocationListView: View {
                         } label: {
                             LocationSummaryCard(location: location)
                         }
-                        .listRowInsets(EdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     }
@@ -100,11 +99,11 @@ private struct EmptyLocationsCard: View {
         ArcFeatureCard {
             ArcFeatureTitle(
                 systemImage: "map",
-                title: "Start with a real place",
-                subtitle: "A saved location anchors planning, field work, and review so every step stays tied to the same shoot spot."
+                title: "Add your first location",
+                subtitle: "Start with one saved place."
             )
 
-            Text("Use current GPS when you arrive, search before a trip, or fine-tune the exact map pin once you know the spot.")
+            Text("Use GPS, search, or the map pin.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -123,21 +122,15 @@ private struct LocationSummaryCard: View {
             ArcFeatureTitle(
                 systemImage: "mappin.and.ellipse",
                 title: location.name,
-                subtitle: "Saved \(location.createdAt.formatted(date: .abbreviated, time: .omitted))"
+                subtitle: location.createdAt.formatted(date: .abbreviated, time: .omitted)
             )
 
-            VStack(alignment: .leading, spacing: 6) {
-                Label(
-                    "\(location.latitude.formatted(.number.precision(.fractionLength(4)))), \(location.longitude.formatted(.number.precision(.fractionLength(4))))",
-                    systemImage: "location.north.line"
-                )
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
-
-                Text("Open to refine the pin, choose the shoot window, or move into field mode.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Label(
+                "\(location.latitude.formatted(.number.precision(.fractionLength(4)))), \(location.longitude.formatted(.number.precision(.fractionLength(4))))",
+                systemImage: "location.north.line"
+            )
+            .font(.callout.monospacedDigit())
+            .foregroundStyle(.secondary)
         }
     }
 }

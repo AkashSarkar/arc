@@ -15,8 +15,8 @@ struct PlanView: View {
             Section {
                 ArcHeroHeader(
                     systemImage: "sparkles.rectangle.stack",
-                    title: "Plan the Shoot",
-                    subtitle: "Choose the output and timing first, then generate a practical plan tailored to this specific location.",
+                    title: "Plan Shoot",
+                    subtitle: "Pick timing and output, then generate a draft.",
                     badges: [
                         ArcHeroBadge(label: viewModel.outputIntent.title, systemImage: "square.stack.3d.up"),
                         ArcHeroBadge(label: viewModel.shootWindowMode.title, systemImage: "calendar.badge.clock")
@@ -32,7 +32,7 @@ struct PlanView: View {
                     ArcFeatureTitle(
                         systemImage: "map.fill",
                         title: location.name,
-                        subtitle: "The saved pin anchors the plan and keeps every suggestion tied to the actual place."
+                        subtitle: nil
                     )
 
                     Label(
@@ -55,7 +55,7 @@ struct PlanView: View {
                     }
                 }
 
-                Text("The generated plan will target a \(viewModel.outputIntent.promptLabel) with \(viewModel.outputIntent.defaultShotCount) suggested shots.")
+                Text("Targets \(viewModel.outputIntent.defaultShotCount) suggested shots.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -80,7 +80,7 @@ struct PlanView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Creative Notes") {
+            Section("Notes") {
                 TextEditor(text: $viewModel.notes)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 140)
@@ -91,7 +91,7 @@ struct PlanView: View {
                             .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
                     }
 
-                Text("Optional: mention the mood, any must-have compositions, or practical constraints for the shoot.")
+                Text("Optional.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -129,7 +129,7 @@ struct PlanView: View {
                         ArcFeatureTitle(
                             systemImage: "text.alignleft",
                             title: "Draft Output",
-                            subtitle: "This is the current text response from the planning model."
+                            subtitle: nil
                         )
 
                         Text(viewModel.response)

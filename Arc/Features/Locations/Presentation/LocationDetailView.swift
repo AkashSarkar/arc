@@ -17,7 +17,7 @@ struct LocationDetailView: View {
                 ArcHeroHeader(
                     systemImage: "camera.aperture",
                     title: location.name,
-                    subtitle: "Keep the pin precise, then move into planning, field work, or review from the same location record.",
+                    subtitle: "Refine the pin, then move into plan, field, or review.",
                     badges: [
                         ArcHeroBadge(label: coordinateSummary, systemImage: "location.north.line"),
                         ArcHeroBadge(label: location.createdAt.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
@@ -33,7 +33,7 @@ struct LocationDetailView: View {
                     ArcFeatureTitle(
                         systemImage: "location.circle",
                         title: "Pinned Coordinates",
-                        subtitle: "This saved pin is the shared reference point for planning, field mode, and review."
+                        subtitle: "This pin anchors the whole workflow."
                     )
 
                     LabeledContent("Name", value: location.name)
@@ -51,12 +51,12 @@ struct LocationDetailView: View {
                 } label: {
                     WorkflowCard(
                         title: "Plan",
-                        subtitle: "Choose output and timing, then generate a structured shot plan.",
+                        subtitle: "Choose timing and generate a shot plan.",
                         systemImage: "sparkles.rectangle.stack",
                         accent: ArcPalette.tint
                     )
                 }
-                .listRowInsets(EdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4))
+                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
@@ -65,12 +65,12 @@ struct LocationDetailView: View {
                 } label: {
                     WorkflowCard(
                         title: "Field",
-                        subtitle: "Carry the plan outdoors with high-contrast, task-first controls.",
+                        subtitle: "Use a high-contrast checklist outdoors.",
                         systemImage: "checklist",
                         accent: ArcPalette.glowPrimary
                     )
                 }
-                .listRowInsets(EdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4))
+                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
@@ -79,12 +79,12 @@ struct LocationDetailView: View {
                 } label: {
                     WorkflowCard(
                         title: "Review",
-                        subtitle: "Check what you captured, what is still missing, and what needs another pass.",
+                        subtitle: "See what you got and what is missing.",
                         systemImage: "photo.on.rectangle",
                         accent: ArcPalette.glowSecondary
                     )
                 }
-                .listRowInsets(EdgeInsets(top: 6, leading: 4, bottom: 6, trailing: 4))
+                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }

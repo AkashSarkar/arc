@@ -206,20 +206,31 @@ struct ArcFeatureCard<Content: View>: View {
 struct ArcFeatureTitle: View {
     let systemImage: String
     let title: String
-    let subtitle: String
+    let subtitle: String?
     var accent: Color = ArcPalette.tint
 
+    private var hasSubtitle: Bool {
+        if let subtitle {
+            return !subtitle.isEmpty
+        }
+
+        return false
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: hasSubtitle ? .top : .center, spacing: 14) {
             ArcMiniIconBadge(systemImage: systemImage, tint: accent)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: hasSubtitle ? 4 : 0) {
                 Text(title)
                     .font(.headline)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -1,55 +1,134 @@
+import SwiftData
 import SwiftUI
 
 struct FieldView: View {
     let location: ShootLocation
-    @State private var checklist: [FieldChecklistItem]
 
-    init(location: ShootLocation) {
-        self.location = location
-        _checklist = State(initialValue: FieldChecklistItem.defaults(for: location))
+    @Environment(\.modelContext) private var modelContext
+
+    private var plan: ShootPlan? {
+        location.plan
+    }
+
+    private var planItems: [ShootPlanItem] {
+        plan?.orderedItems ?? []
+    }
+
+    private var hasPlanItems: Bool {
+        !planItems.isEmpty
     }
 
     private var completedCount: Int {
-        checklist.filter(\ .isCompleted).count
+        plan?.capturedCount ?? 0
     }
 
     private var remainingCount: Int {
-        checklist.count - completedCount
+        max(planItems.count - completedCount, 0)
     }
 
     private var completionProgress: Double {
-        guard !checklist.isEmpty else { return 0 }
-        return Double(completedCount) / Double(checklist.count)
+        plan?.completionProgress ?? 0
     }
 
-    private var nextPendingItem: FieldChecklistItem? {
-        checklist.first(where: { !$0.isCompleted })
+    private var nextPendingItem: ShootPlanItem? {
+        planItems.first(where: { !$0.isCaptured })
+    }
+
+    private var heroBadges: [ArcHeroBadge] {
+        guard let plan, hasPlanItems else {
+            return []
+        }
+
+        return [
+            ArcHeroBadge(label: plan.outputIntent.title, systemImage: "square.stack.3d.up"),
+            ArcHeroBadge(
+                label: plan.shootWindowMode == .now ? "Now" : "Custom window",
+                systemImage: "calendar.badge.clock"
+            )
+        ]
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                FieldHeroCard(
-                    location: location,
-                    progress: completionProgress,
-                    completedCount: completedCount,
-                    totalCount: checklist.count,
-                    nextPendingTitle: nextPendingItem?.title
-                )
+                ArcHeroHeader(
+                    systemImage: "checklist.checked",
+                    title: "Field Mode",
+                    subtitle: hasPlanItems
+                        ? "High contrast, quick decisions, minimal friction."
+                        : "Generate a plan first, then use it as the field checklist.",
+                    badges: heroBadges
+                ) {
+                    FieldLocationContextRow(locationName: location.name)
 
-                FieldQuickActionCard(
-                    remainingCount: remainingCount,
-                    hasPendingItems: nextPendingItem != nil,
-                    completeNext: completeNextItem,
-                    resetChecklist: resetChecklist
-                )
+                    if hasPlanItems {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 12) {
+                                FieldMetricTile(
+                                    title: "Complete",
+                                    value: "\(completedCount)/\(planItems.count)",
+                                    accent: ArcPalette.tint
+                                )
 
-                FieldChecklistCard(
-                    items: checklist,
-                    toggleItem: toggleItemCompletion
-                )
+                                FieldMetricTile(
+                                    title: "Remaining",
+                                    value: "\(remainingCount)",
+                                    accent: ArcPalette.glowPrimary
+                                )
+                            }
 
-                FieldGuidanceCard(location: location)
+                            VStack(spacing: 12) {
+                                FieldMetricTile(
+                                    title: "Complete",
+                                    value: "\(completedCount)/\(planItems.count)",
+                                    accent: ArcPalette.tint
+                                )
+
+                                FieldMetricTile(
+                                    title: "Remaining",
+                                    value: "\(remainingCount)",
+                                    accent: ArcPalette.glowPrimary
+                                )
+                            }
+                        }
+
+                        FieldProgressSection(
+                            progress: completionProgress,
+                            nextPendingTitle: nextPendingItem?.title
+                        )
+
+                        HStack(spacing: 12) {
+                            Button(action: completeNextItem) {
+                                Label(nextPendingItem == nil ? "All Done" : "Mark Next", systemImage: "checkmark.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(FieldPrimaryButtonStyle())
+                            .disabled(nextPendingItem == nil)
+
+                            Button(action: resetChecklist) {
+                                Label("Reset", systemImage: "arrow.counterclockwise")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(FieldSecondaryButtonStyle())
+                        }
+                    }
+                }
+
+                if hasPlanItems {
+                    FieldChecklistCard(
+                        items: planItems,
+                        toggleItem: toggleItemCompletion
+                    )
+
+                    if let plan {
+                        FieldGuidanceCard(
+                            location: location,
+                            outputIntentTitle: plan.outputIntent.title
+                        )
+                    }
+                } else {
+                    FieldPlanRequiredCard()
+                }
             }
             .padding(20)
         }
@@ -58,14 +137,12 @@ struct FieldView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func toggleItemCompletion(_ item: FieldChecklistItem) {
-        guard let index = checklist.firstIndex(where: { $0.id == item.id }) else {
-            return
+    private func toggleItemCompletion(_ item: ShootPlanItem) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            item.isCaptured.toggle()
         }
 
-        withAnimation(.easeInOut(duration: 0.18)) {
-            checklist[index].isCompleted.toggle()
-        }
+        saveChanges()
     }
 
     private func completeNextItem() {
@@ -78,125 +155,29 @@ struct FieldView: View {
 
     private func resetChecklist() {
         withAnimation(.easeInOut(duration: 0.18)) {
-            for index in checklist.indices {
-                checklist[index].isCompleted = false
+            for item in planItems {
+                item.isCaptured = false
             }
         }
+
+        saveChanges()
     }
-}
 
-private struct FieldHeroCard: View {
-    let location: ShootLocation
-    let progress: Double
-    let completedCount: Int
-    let totalCount: Int
-    let nextPendingTitle: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            ArcFeatureTitle(
-                systemImage: "checklist.checked",
-                title: "Field Mode",
-                subtitle: "High contrast, quick decisions, minimal friction.",
-                accent: ArcPalette.tint
-            )
-
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(location.name)
-                        .font(.headline)
-
-                    Text("\(completedCount) of \(totalCount) frames locked")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Text(progress.formatted(.percent.precision(.fractionLength(0))))
-                    .font(.title3.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(ArcPalette.tint)
-            }
-
-            FieldProgressBar(progress: progress)
-
-            HStack(spacing: 12) {
-                FieldStatBadge(
-                    systemImage: "camera.metering.center.weighted.average",
-                    label: nextPendingTitle ?? "Checklist wrapped",
-                    tone: ArcPalette.tint.opacity(0.18)
-                )
-
-                FieldStatBadge(
-                    systemImage: "location.north.line",
-                    label: location.latitude.formatted(.number.precision(.fractionLength(3))) + ", " + location.longitude.formatted(.number.precision(.fractionLength(3))),
-                    tone: ArcPalette.glowSecondary.opacity(0.18)
-                )
-            }
-        }
-        .padding(22)
-        .background(ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-        }
-    }
-}
-
-private struct FieldQuickActionCard: View {
-    let remainingCount: Int
-    let hasPendingItems: Bool
-    let completeNext: () -> Void
-    let resetChecklist: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ArcFeatureTitle(
-                systemImage: "sun.max.fill",
-                title: "Readable outdoors",
-                subtitle: "Finish the next frame fast and keep the screen simple.",
-                accent: ArcPalette.glowPrimary
-            )
-
-            HStack(spacing: 12) {
-                Button(action: completeNext) {
-                    Label(hasPendingItems ? "Mark Next Done" : "All Complete", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(FieldPrimaryButtonStyle())
-                .disabled(!hasPendingItems)
-
-                Button(action: resetChecklist) {
-                    Label("Reset", systemImage: "arrow.counterclockwise")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(FieldSecondaryButtonStyle())
-            }
-
-            Text(remainingCount == 0 ? "Everything in this pass is covered." : "\(remainingCount) items still need a frame.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .padding(20)
-        .background(ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-        }
+    private func saveChanges() {
+        try? modelContext.save()
     }
 }
 
 private struct FieldChecklistCard: View {
-    let items: [FieldChecklistItem]
-    let toggleItem: (FieldChecklistItem) -> Void
+    let items: [ShootPlanItem]
+    let toggleItem: (ShootPlanItem) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             ArcFeatureTitle(
                 systemImage: "checklist",
                 title: "Checklist",
-                subtitle: "Large single-tap rows stay usable in motion.",
+                subtitle: nil,
                 accent: ArcPalette.tint
             )
 
@@ -222,20 +203,27 @@ private struct FieldChecklistCard: View {
 
 private struct FieldGuidanceCard: View {
     let location: ShootLocation
+    let outputIntentTitle: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             ArcFeatureTitle(
                 systemImage: "eye.fill",
-                title: "Capture Guidance",
-                subtitle: "A few reminders, without turning the phone into homework.",
+                title: "Reminders",
+                subtitle: nil,
                 accent: ArcPalette.glowSecondary
+            )
+
+            FieldGuidanceRow(
+                systemImage: "sparkles.rectangle.stack",
+                title: "Stay on brief",
+                subtitle: "Keep the \(outputIntentTitle) set coherent while shooting \(location.name)."
             )
 
             FieldGuidanceRow(
                 systemImage: "mountain.2.fill",
                 title: "Open wide first",
-                subtitle: "Start with one wide frame of \(location.name) before moving into details."
+                subtitle: "Anchor \(location.name) before moving into details."
             )
 
             FieldGuidanceRow(
@@ -246,8 +234,8 @@ private struct FieldGuidanceCard: View {
 
             FieldGuidanceRow(
                 systemImage: "rectangle.portrait.and.arrow.right",
-                title: "Leave with one vertical cutaway",
-                subtitle: "Grab one vertical detail or motion frame for the edit."
+                title: "Grab one vertical cutaway",
+                subtitle: "Leave with one detail or motion frame for the edit."
             )
         }
         .padding(20)
@@ -259,14 +247,122 @@ private struct FieldGuidanceCard: View {
     }
 }
 
+private struct FieldPlanRequiredCard: View {
+    var body: some View {
+        ArcFeatureCard(accent: ArcPalette.glowPrimary) {
+            ArcFeatureTitle(
+                systemImage: "sparkles.rectangle.stack",
+                title: "No saved plan",
+                subtitle: nil,
+                accent: ArcPalette.glowPrimary
+            )
+
+            Text("Generate a plan for this location first so field mode can reuse the same shot list.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct FieldLocationContextRow: View {
+    let locationName: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "mappin.and.ellipse")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ArcPalette.tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Working at")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(locationName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
+private struct FieldMetricTile: View {
+    let title: String
+    let value: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.title2.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
+private struct FieldProgressSection: View {
+    let progress: Double
+    let nextPendingTitle: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Progress")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(progress.formatted(.percent.precision(.fractionLength(0))))
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(ArcPalette.tint)
+            }
+
+            FieldProgressBar(progress: progress)
+
+            Label(nextPendingTitle ?? "Checklist wrapped", systemImage: "camera.metering.center.weighted.average")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(14)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
 private struct FieldChecklistRow: View {
-    let item: FieldChecklistItem
+    let item: ShootPlanItem
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
+            Image(systemName: item.isCaptured ? "checkmark.circle.fill" : "circle")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(item.isCompleted ? ArcPalette.tint : .secondary)
+                .foregroundStyle(item.isCaptured ? ArcPalette.tint : .secondary)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -285,7 +381,7 @@ private struct FieldChecklistRow: View {
                         .foregroundStyle(ArcPalette.tint)
                 }
 
-                Text(item.subtitle)
+                Text(item.guidance)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -296,7 +392,7 @@ private struct FieldChecklistRow: View {
         .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(item.isCompleted ? ArcPalette.tint.opacity(0.45) : ArcPalette.surfaceStroke, lineWidth: 1)
+                .stroke(item.isCaptured ? ArcPalette.tint.opacity(0.45) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
@@ -343,21 +439,6 @@ private struct FieldProgressBar: View {
     }
 }
 
-private struct FieldStatBadge: View {
-    let systemImage: String
-    let label: String
-    let tone: Color
-
-    var body: some View {
-        Label(label, systemImage: systemImage)
-            .font(.footnote.weight(.medium))
-            .lineLimit(1)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(tone, in: Capsule())
-    }
-}
-
 private struct FieldPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -389,51 +470,5 @@ private struct FieldSecondaryButtonStyle: ButtonStyle {
                     .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.99 : 1)
-    }
-}
-
-private struct FieldChecklistItem: Identifiable {
-    let id: UUID
-    let title: String
-    let subtitle: String
-    let role: String
-    var isCompleted: Bool
-
-    init(id: UUID = UUID(), title: String, subtitle: String, role: String, isCompleted: Bool = false) {
-        self.id = id
-        self.title = title
-        self.subtitle = subtitle
-        self.role = role
-        self.isCompleted = isCompleted
-    }
-
-    static func defaults(for location: ShootLocation) -> [FieldChecklistItem] {
-        [
-            FieldChecklistItem(
-                title: "Establish the place",
-                subtitle: "Take one wide frame that anchors \(location.name).",
-                role: "Wide"
-            ),
-            FieldChecklistItem(
-                title: "Lock the hero angle",
-                subtitle: "Find the strongest main composition before the light shifts.",
-                role: "Hero"
-            ),
-            FieldChecklistItem(
-                title: "Capture a texture detail",
-                subtitle: "Take one tighter frame to vary the set.",
-                role: "Detail"
-            ),
-            FieldChecklistItem(
-                title: "Grab a vertical cutaway",
-                subtitle: "Shoot one vertical frame or motion clip.",
-                role: "Motion"
-            ),
-            FieldChecklistItem(
-                title: "Finish with a closer",
-                subtitle: "Leave with one calmer ending frame.",
-                role: "Closer"
-            )
-        ]
     }
 }

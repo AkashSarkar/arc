@@ -118,13 +118,41 @@ struct ArcHeroBadge: Identifiable, Hashable {
     }
 }
 
-struct ArcHeroHeader: View {
+struct ArcHeroHeader<Content: View>: View {
     let systemImage: String
     let title: String
     let subtitle: String
     var badges: [ArcHeroBadge] = []
+    @ViewBuilder private let content: Content
 
     private let cardShape = RoundedRectangle(cornerRadius: 32, style: .continuous)
+
+    init(
+        systemImage: String,
+        title: String,
+        subtitle: String,
+        badges: [ArcHeroBadge] = []
+    ) where Content == EmptyView {
+        self.systemImage = systemImage
+        self.title = title
+        self.subtitle = subtitle
+        self.badges = badges
+        self.content = EmptyView()
+    }
+
+    init(
+        systemImage: String,
+        title: String,
+        subtitle: String,
+        badges: [ArcHeroBadge] = [],
+        @ViewBuilder content: () -> Content
+    ) {
+        self.systemImage = systemImage
+        self.title = title
+        self.subtitle = subtitle
+        self.badges = badges
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -140,6 +168,8 @@ struct ArcHeroHeader: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+
+            content
 
             if !badges.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {

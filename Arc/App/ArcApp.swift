@@ -13,6 +13,6 @@ struct ArcApp: App {
             )
             .tint(ArcPalette.tint)
         }
-        .modelContainer(for: [ShootLocation.self])
+        .modelContainer(for: [ShootLocation.self, ShootPlan.self, ShootPlanItem.self])
     }
 }

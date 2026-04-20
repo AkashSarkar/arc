@@ -7,8 +7,44 @@ struct LocationDetailView: View {
 
     @State private var isPresentingEditLocation = false
 
-    private var coordinateSummary: String {
-        "\(location.latitude.formatted(.number.precision(.fractionLength(4)))), \(location.longitude.formatted(.number.precision(.fractionLength(4))))"
+    private var heroBadges: [ArcHeroBadge] {
+        var badges = [
+            ArcHeroBadge(label: location.createdAt.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
+        ]
+
+        if let plan = location.plan, !plan.items.isEmpty {
+            badges.append(ArcHeroBadge(label: "\(plan.items.count) shots planned", systemImage: "sparkles"))
+        }
+
+        return badges
+    }
+
+    private var planSubtitle: String {
+        guard let plan = location.plan, !plan.items.isEmpty else {
+            return "Generate a shot plan."
+        }
+
+        return "\(plan.items.count) shots saved."
+    }
+
+    private var fieldSubtitle: String {
+        guard let plan = location.plan, !plan.items.isEmpty else {
+            return "Generate a plan to create the checklist."
+        }
+
+        return "\(plan.capturedCount) of \(plan.items.count) captured."
+    }
+
+    private var reviewSubtitle: String {
+        guard let plan = location.plan, !plan.items.isEmpty else {
+            return "Review coverage after you plan and shoot."
+        }
+
+        if plan.missingCount == 0 {
+            return "All planned shots are covered."
+        }
+
+        return "\(plan.missingCount) shots still open."
     }
 
     var body: some View {
@@ -18,40 +54,20 @@ struct LocationDetailView: View {
                     systemImage: "camera.aperture",
                     title: location.name,
                     subtitle: "Refine the pin, then move into plan, field, or review.",
-                    badges: [
-                        ArcHeroBadge(label: coordinateSummary, systemImage: "location.north.line"),
-                        ArcHeroBadge(label: location.createdAt.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar")
-                    ]
+                    badges: heroBadges
                 )
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
 
-            Section("Location Details") {
-                ArcFeatureCard {
-                    ArcFeatureTitle(
-                        systemImage: "location.circle",
-                        title: "Pinned Coordinates",
-                        subtitle: "This pin anchors the whole workflow."
-                    )
-
-                    LabeledContent("Name", value: location.name)
-                    LabeledContent("Latitude", value: location.latitude.formatted(.number.precision(.fractionLength(5))))
-                    LabeledContent("Longitude", value: location.longitude.formatted(.number.precision(.fractionLength(5))))
-                }
-                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
-
-            Section("Workflows") {
+            Section {
                 NavigationLink {
                     PlanView(location: location, aiService: aiService)
                 } label: {
                     WorkflowCard(
                         title: "Plan",
-                        subtitle: "Choose timing and generate a shot plan.",
+                        subtitle: planSubtitle,
                         systemImage: "sparkles.rectangle.stack",
                         accent: ArcPalette.tint
                     )
@@ -65,7 +81,7 @@ struct LocationDetailView: View {
                 } label: {
                     WorkflowCard(
                         title: "Field",
-                        subtitle: "Use a high-contrast checklist outdoors.",
+                        subtitle: fieldSubtitle,
                         systemImage: "checklist",
                         accent: ArcPalette.glowPrimary
                     )
@@ -79,7 +95,7 @@ struct LocationDetailView: View {
                 } label: {
                     WorkflowCard(
                         title: "Review",
-                        subtitle: "See what you got and what is missing.",
+                        subtitle: reviewSubtitle,
                         systemImage: "photo.on.rectangle",
                         accent: ArcPalette.glowSecondary
                     )

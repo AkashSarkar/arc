@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftData
 
 @MainActor
 @Observable
@@ -17,24 +18,41 @@ final class PlanViewModel {
     var shootStartTime: Date = Date()
     var shootEndTime: Date = Calendar.current.date(byAdding: .hour, value: 2, to: Date()) ?? Date()
 
-    init(aiService: any AIServicing) {
+    init(aiService: any AIServicing, existingPlan: ShootPlan? = nil) {
         self.aiService = aiService
+
+        guard let existingPlan else {
+            return
+        }
+
+        notes = existingPlan.notes
+        response = ShotPlanParser.formattedResponse(
+            from: existingPlan.orderedItems.map {
+                PlannedShotDraft(title: $0.title, role: $0.role, guidance: $0.guidance)
+            },
+            fallback: existingPlan.rawResponse
+        )
+        shootWindowMode = existingPlan.shootWindowMode
+        outputIntent = existingPlan.outputIntent
+        shootDate = existingPlan.shootDate
+        shootStartTime = existingPlan.shootStartTime
+        shootEndTime = existingPlan.shootEndTime
     }
 
     var shootWindowSummary: String {
         switch shootWindowMode {
         case .now:
-            return "Use the current conditions at the location right now."
+            return "Use current conditions."
         case .custom:
             let window = customShootWindow()
             let dateText = window.start.formatted(date: .abbreviated, time: .omitted)
             let startText = window.start.formatted(date: .omitted, time: .shortened)
             let endText = window.end.formatted(date: .omitted, time: .shortened)
-            return "Plan for \(dateText), from \(startText) to \(endText)."
+            return "\(dateText), \(startText) to \(endText)."
         }
     }
 
-    func generatePlan(for location: ShootLocation) async {
+    func generatePlan(for location: ShootLocation, modelContext: ModelContext) async {
         let prompt = buildPrompt(for: location)
         guard !prompt.isEmpty else {
             errorMessage = "Set up the plan details first."
@@ -47,7 +65,18 @@ final class PlanViewModel {
         defer { isLoading = false }
 
         do {
-            response = try await aiService.generateShotPlan(for: prompt)
+            let rawResponse = try await aiService.generateShotPlan(for: prompt)
+            let drafts = ShotPlanParser.parse(response: rawResponse)
+
+            persistPlan(
+                for: location,
+                rawResponse: rawResponse,
+                drafts: drafts,
+                modelContext: modelContext
+            )
+
+            try modelContext.save()
+            response = ShotPlanParser.formattedResponse(from: drafts, fallback: rawResponse)
         } catch {
             response = ""
             errorMessage = error.localizedDescription
@@ -74,6 +103,8 @@ final class PlanViewModel {
             "Location: \(location.name) at \(locationCoordinates).",
             "Shoot window: \(shootWindowText).",
             "Each shot should be specific to the location and include a narrative role, composition idea, and practical shooting guidance.",
+            "Return exactly \(outputIntent.defaultShotCount) numbered lines in this format: Short shot title | role | practical guidance.",
+            "Do not add headings, intro copy, markdown tables, or closing notes.",
         ]
 
         if !cleanNotes.isEmpty {
@@ -119,5 +150,47 @@ final class PlanViewModel {
         )
 
         return calendar.date(from: mergedComponents) ?? date
+    }
+
+    private func persistPlan(
+        for location: ShootLocation,
+        rawResponse: String,
+        drafts: [PlannedShotDraft],
+        modelContext: ModelContext
+    ) {
+        let cleanNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let plan = location.plan ?? ShootPlan(location: location)
+
+        if location.plan == nil {
+            location.plan = plan
+            modelContext.insert(plan)
+        }
+
+        plan.createdAt = Date()
+        plan.notes = cleanNotes
+        plan.rawResponse = rawResponse
+        plan.outputIntentRawValue = outputIntent.rawValue
+        plan.shootWindowModeRawValue = shootWindowMode.rawValue
+        plan.shootWindowSummary = shootWindowSummary
+        plan.shootDate = shootDate
+        plan.shootStartTime = shootStartTime
+        plan.shootEndTime = shootEndTime
+
+        for existingItem in Array(plan.items) {
+            modelContext.delete(existingItem)
+        }
+        plan.items.removeAll()
+
+        for (index, draft) in drafts.enumerated() {
+            let item = ShootPlanItem(
+                orderIndex: index,
+                title: draft.title,
+                role: draft.role,
+                guidance: draft.guidance,
+                plan: plan
+            )
+            modelContext.insert(item)
+            plan.items.append(item)
+        }
     }
 }

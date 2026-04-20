@@ -3,11 +3,12 @@ import SwiftUI
 struct PlanView: View {
     let location: ShootLocation
 
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: PlanViewModel
 
     init(location: ShootLocation, aiService: any AIServicing) {
         self.location = location
-        _viewModel = State(initialValue: PlanViewModel(aiService: aiService))
+        _viewModel = State(initialValue: PlanViewModel(aiService: aiService, existingPlan: location.plan))
     }
 
     var body: some View {
@@ -16,120 +17,113 @@ struct PlanView: View {
                 ArcHeroHeader(
                     systemImage: "sparkles.rectangle.stack",
                     title: "Plan Shoot",
-                    subtitle: "Pick timing and output, then generate a draft.",
-                    badges: [
-                        ArcHeroBadge(label: viewModel.outputIntent.title, systemImage: "square.stack.3d.up"),
-                        ArcHeroBadge(label: viewModel.shootWindowMode.title, systemImage: "calendar.badge.clock")
-                    ]
-                )
+                    subtitle: "Pick output and timing, then generate a draft for this location."
+                ) {
+                    PlanLocationContextRow(locationName: location.name)
+
+                    HStack(spacing: 10) {
+                        PlanFilterMenu(
+                            systemImage: "square.stack.3d.up",
+                            title: "Output",
+                            selection: $viewModel.outputIntent,
+                            options: OutputIntent.allCases,
+                            optionTitle: \.title
+                        )
+
+                        PlanFilterMenu(
+                            systemImage: "calendar.badge.clock",
+                            title: "Timing",
+                            selection: $viewModel.shootWindowMode,
+                            options: ShootWindowMode.allCases,
+                            optionTitle: \.title
+                        )
+                    }
+
+                    if viewModel.shootWindowMode == .custom {
+                        PlanCustomWindowEditor(
+                            shootDate: $viewModel.shootDate,
+                            shootStartTime: $viewModel.shootStartTime,
+                            shootEndTime: $viewModel.shootEndTime
+                        )
+                    }
+
+                    Text(planSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
 
-            Section("Location") {
-                ArcFeatureCard(accent: ArcPalette.glowSecondary) {
+            Section {
+                ArcFeatureCard {
                     ArcFeatureTitle(
-                        systemImage: "map.fill",
-                        title: location.name,
+                        systemImage: "note.text",
+                        title: "Notes",
                         subtitle: nil
                     )
 
-                    Label(
-                        "\(location.latitude.formatted(.number.precision(.fractionLength(5)))), \(location.longitude.formatted(.number.precision(.fractionLength(5))))",
-                        systemImage: "location.north.line"
-                    )
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    TextEditor(text: $viewModel.notes)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 140)
+                        .padding(12)
+                        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                        }
                 }
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
 
-            Section("Output") {
-                Picker("Intent", selection: $viewModel.outputIntent) {
-                    ForEach(OutputIntent.allCases) { intent in
-                        Text(intent.title)
-                            .tag(intent)
-                    }
-                }
-
-                Text("Targets \(viewModel.outputIntent.defaultShotCount) suggested shots.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Shoot Window") {
-                Picker("Timing", selection: $viewModel.shootWindowMode) {
-                    ForEach(ShootWindowMode.allCases) { mode in
-                        Text(mode.title)
-                            .tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                if viewModel.shootWindowMode == .custom {
-                    DatePicker("Date", selection: $viewModel.shootDate, displayedComponents: .date)
-                    DatePicker("Start", selection: $viewModel.shootStartTime, displayedComponents: .hourAndMinute)
-                    DatePicker("End", selection: $viewModel.shootEndTime, displayedComponents: .hourAndMinute)
-                }
-
-                Text(viewModel.shootWindowSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Notes") {
-                TextEditor(text: $viewModel.notes)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 140)
-                    .padding(12)
-                    .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-                    }
-
-                Text("Optional.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
             Section {
-                Button {
-                    Task {
-                        await viewModel.generatePlan(for: location)
-                    }
-                } label: {
-                    HStack {
-                        if viewModel.isLoading {
-                            ProgressView()
-                                .controlSize(.small)
+                ArcFeatureCard(accent: ArcPalette.tint) {
+                    Button {
+                        Task {
+                            await viewModel.generatePlan(for: location, modelContext: modelContext)
                         }
+                    } label: {
+                        HStack {
+                            if viewModel.isLoading {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
 
-                        Text(viewModel.isLoading ? "Generating..." : "Generate Plan")
-                            .frame(maxWidth: .infinity)
+                            Text(viewModel.isLoading ? "Generating..." : "Generate Plan")
+                                .frame(maxWidth: .infinity)
+                        }
                     }
+                    .buttonStyle(.glassProminent)
+                    .disabled(viewModel.isLoading)
                 }
-                .buttonStyle(.glassProminent)
-                .disabled(viewModel.isLoading)
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
 
             if let errorMessage = viewModel.errorMessage {
                 Section {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
+                    ArcFeatureCard(accent: .red) {
+                        Text(errorMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.red)
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
             }
 
             if !viewModel.response.isEmpty {
-                Section("Generated Plan") {
+                Section {
                     ArcFeatureCard(accent: ArcPalette.glowSecondary) {
                         ArcFeatureTitle(
                             systemImage: "text.alignleft",
-                            title: "Draft Output",
-                            subtitle: nil
+                            title: "Draft Plan",
+                            subtitle: "Saved for field and review."
                         )
 
                         Text(viewModel.response)
@@ -150,5 +144,157 @@ struct PlanView: View {
         .onChange(of: viewModel.shootStartTime) { _, _ in
             viewModel.ensureDefaultWindowTimes()
         }
+    }
+
+    private var planSummary: String {
+        if viewModel.shootWindowMode == .custom {
+            return "\(viewModel.outputIntent.defaultShotCount) shots. \(viewModel.shootWindowSummary)"
+        }
+
+        return "\(viewModel.outputIntent.defaultShotCount) shots. Use current conditions."
+    }
+}
+
+private struct PlanLocationContextRow: View {
+    let locationName: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "mappin.and.ellipse")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(ArcPalette.tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Planning for")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(locationName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
+private struct PlanCustomWindowEditor: View {
+    @Binding var shootDate: Date
+    @Binding var shootStartTime: Date
+    @Binding var shootEndTime: Date
+
+    var body: some View {
+        VStack(spacing: 10) {
+            PlanCompactDatePickerRow(
+                title: "Date",
+                selection: $shootDate,
+                displayedComponents: .date
+            )
+
+            PlanCompactDatePickerRow(
+                title: "Start",
+                selection: $shootStartTime,
+                displayedComponents: .hourAndMinute
+            )
+
+            PlanCompactDatePickerRow(
+                title: "End",
+                selection: $shootEndTime,
+                displayedComponents: .hourAndMinute
+            )
+        }
+        .padding(14)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
+private struct PlanCompactDatePickerRow: View {
+    let title: String
+    @Binding var selection: Date
+    let displayedComponents: DatePickerComponents
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            DatePicker(title, selection: $selection, displayedComponents: displayedComponents)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+        }
+    }
+}
+
+private struct PlanFilterMenu<Option: Identifiable & Hashable>: View {
+    let systemImage: String
+    let title: String
+    @Binding var selection: Option
+    let options: [Option]
+    let optionTitle: KeyPath<Option, String>
+
+    var body: some View {
+        Menu {
+            ForEach(options) { option in
+                Button {
+                    selection = option
+                } label: {
+                    HStack {
+                        Text(option[keyPath: optionTitle])
+
+                        if option == selection {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(ArcPalette.tint)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text(selection[keyPath: optionTitle])
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }

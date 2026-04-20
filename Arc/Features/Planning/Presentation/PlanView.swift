@@ -12,6 +12,41 @@ struct PlanView: View {
 
     var body: some View {
         Form {
+            Section {
+                ArcHeroHeader(
+                    systemImage: "sparkles.rectangle.stack",
+                    title: "Plan the Shoot",
+                    subtitle: "Choose the output and timing first, then generate a practical plan tailored to this specific location.",
+                    badges: [
+                        ArcHeroBadge(label: viewModel.outputIntent.title, systemImage: "square.stack.3d.up"),
+                        ArcHeroBadge(label: viewModel.shootWindowMode.title, systemImage: "calendar.badge.clock")
+                    ]
+                )
+                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
+            Section("Location") {
+                ArcFeatureCard(accent: ArcPalette.glowSecondary) {
+                    ArcFeatureTitle(
+                        systemImage: "map.fill",
+                        title: location.name,
+                        subtitle: "The saved pin anchors the plan and keeps every suggestion tied to the actual place."
+                    )
+
+                    Label(
+                        "\(location.latitude.formatted(.number.precision(.fractionLength(5)))), \(location.longitude.formatted(.number.precision(.fractionLength(5))))",
+                        systemImage: "location.north.line"
+                    )
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             Section("Output") {
                 Picker("Intent", selection: $viewModel.outputIntent) {
                     ForEach(OutputIntent.allCases) { intent in
@@ -47,7 +82,18 @@ struct PlanView: View {
 
             Section("Creative Notes") {
                 TextEditor(text: $viewModel.notes)
+                    .scrollContentBackground(.hidden)
                     .frame(minHeight: 140)
+                    .padding(12)
+                    .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                    }
+
+                Text("Optional: mention the mood, any must-have compositions, or practical constraints for the shoot.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -66,7 +112,7 @@ struct PlanView: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .disabled(viewModel.isLoading)
             }
 
@@ -78,14 +124,29 @@ struct PlanView: View {
             }
 
             if !viewModel.response.isEmpty {
-                Section("Response") {
-                    Text(viewModel.response)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
+                Section("Generated Plan") {
+                    ArcFeatureCard(accent: ArcPalette.glowSecondary) {
+                        ArcFeatureTitle(
+                            systemImage: "text.alignleft",
+                            title: "Draft Output",
+                            subtitle: "This is the current text response from the planning model."
+                        )
+
+                        Text(viewModel.response)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
             }
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(ArcSceneBackground())
         .navigationTitle("Plan")
+        .navigationBarTitleDisplayMode(.inline)
         .onChange(of: viewModel.shootStartTime) { _, _ in
             viewModel.ensureDefaultWindowTimes()
         }

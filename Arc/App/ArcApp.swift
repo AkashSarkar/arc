@@ -11,6 +11,7 @@ struct ArcApp: App {
                 aiService: container.aiService,
                 locationEditorServices: container.locationEditorServices
             )
+            .tint(ArcPalette.tint)
         }
         .modelContainer(for: [ShootLocation.self])
     }

@@ -28,118 +28,205 @@ struct LocationEditorView: View {
 
         NavigationStack {
             Form {
-                Section("Location") {
-                    TextField("Name", text: $viewModel.name)
-                        .textInputAutocapitalization(.words)
+                Section {
+                    ArcHeroHeader(
+                        systemImage: viewModel.isEditing ? "slider.horizontal.3" : "location.viewfinder",
+                        title: viewModel.navigationTitle,
+                        subtitle: "Start from your current GPS, search for a place, or nudge the map until the pin matches the exact shoot spot.",
+                        badges: [
+                            ArcHeroBadge(label: "Current GPS", systemImage: "location.fill"),
+                            ArcHeroBadge(label: "Map pin", systemImage: "mappin.circle"),
+                            ArcHeroBadge(label: "Search", systemImage: "magnifyingglass")
+                        ]
+                    )
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
-                    Button {
-                        Task {
-                            await viewModel.useCurrentLocation()
-                        }
-                    } label: {
-                        Label(
-                            viewModel.isResolvingCurrentLocation ? "Resolving current GPS..." : "Use Current GPS",
-                            systemImage: "location.fill"
+                Section {
+                    ArcFeatureCard {
+                        ArcFeatureTitle(
+                            systemImage: "text.cursor",
+                            title: "Location Name",
+                            subtitle: "The title can come from GPS, search, or the pin, then be refined by hand."
                         )
-                    }
-                    .disabled(viewModel.isResolvingCurrentLocation)
 
-                    if viewModel.isResolvingCurrentLocation {
-                        ProgressView()
+                        editorTextField("Name", text: $viewModel.name)
+                            .textInputAutocapitalization(.words)
+
+                        Button {
+                            Task {
+                                await viewModel.useCurrentLocation()
+                            }
+                        } label: {
+                            Label(
+                                viewModel.isResolvingCurrentLocation ? "Resolving current GPS..." : "Use Current GPS",
+                                systemImage: "location.fill"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .disabled(viewModel.isResolvingCurrentLocation)
+
+                        if viewModel.isResolvingCurrentLocation {
+                            ProgressView()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
-                Section("Search") {
-                    HStack(spacing: 12) {
-                        TextField("Search place or address", text: $viewModel.searchQuery)
-                            .textInputAutocapitalization(.words)
-                            .autocorrectionDisabled()
-                            .submitLabel(.search)
-                            .onSubmit {
+                Section {
+                    ArcFeatureCard(accent: ArcPalette.glowSecondary) {
+                        ArcFeatureTitle(
+                            systemImage: "magnifyingglass",
+                            title: "Search",
+                            subtitle: "Look up a place or address, then jump the pin directly to that result."
+                        )
+
+                        HStack(alignment: .center, spacing: 10) {
+                            editorTextField("Search place or address", text: $viewModel.searchQuery)
+                                .textInputAutocapitalization(.words)
+                                .autocorrectionDisabled()
+                                .submitLabel(.search)
+                                .onSubmit {
+                                    Task {
+                                        await viewModel.searchUsingQuery()
+                                    }
+                                }
+
+                            Button("Search") {
                                 Task {
                                     await viewModel.searchUsingQuery()
                                 }
                             }
-
-                        Button("Search") {
-                            Task {
-                                await viewModel.searchUsingQuery()
-                            }
+                            .buttonStyle(.glass)
+                            .disabled(
+                                viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                                viewModel.isResolvingSearchResult
+                            )
                         }
-                        .disabled(
-                            viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                            viewModel.isResolvingSearchResult
-                        )
-                    }
 
-                    if viewModel.isResolvingSearchResult {
-                        ProgressView("Searching...")
-                    }
+                        if viewModel.isResolvingSearchResult {
+                            ProgressView("Searching...")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
 
-                    if !viewModel.suggestions.isEmpty {
-                        ForEach(viewModel.suggestions) { suggestion in
-                            Button {
-                                Task {
-                                    await viewModel.resolveSuggestion(suggestion)
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(suggestion.title)
-                                        .foregroundStyle(.primary)
-                                    if !suggestion.subtitle.isEmpty {
-                                        Text(suggestion.subtitle)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                        if !viewModel.suggestions.isEmpty {
+                            VStack(spacing: 10) {
+                                ForEach(viewModel.suggestions) { suggestion in
+                                    Button {
+                                        Task {
+                                            await viewModel.resolveSuggestion(suggestion)
+                                        }
+                                    } label: {
+                                        HStack(alignment: .top, spacing: 12) {
+                                            ArcMiniIconBadge(systemImage: "mappin.and.ellipse")
+
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(suggestion.title)
+                                                    .foregroundStyle(.primary)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                if !suggestion.subtitle.isEmpty {
+                                                    Text(suggestion.subtitle)
+                                                        .font(.caption)
+                                                        .foregroundStyle(.secondary)
+                                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                                }
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(14)
+                                        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                                        .glassEffect(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                                        }
                                     }
+                                    .buttonStyle(.plain)
                                 }
                             }
-                            .buttonStyle(.plain)
+                        } else if !viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("Use Search to jump to a result, or pick a suggestion when one appears.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                    } else if !viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("Use Search to jump to a result, or pick a suggestion when one appears.")
+                    }
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+
+                Section {
+                    ArcFeatureCard(accent: ArcPalette.glowPrimary) {
+                        ArcFeatureTitle(
+                            systemImage: "map",
+                            title: "Map Pin",
+                            subtitle: "Pan the map until the centered pin lands on the exact spot you want to save."
+                        )
+
+                        LocationMapPicker(
+                            selectedCoordinate: viewModel.selectedCoordinate,
+                            mapFocusCoordinate: viewModel.mapFocusCoordinate,
+                            mapFocusVersion: viewModel.mapFocusVersion,
+                            onMapSelectionChanged: { coordinate in
+                                viewModel.updateMapPin(to: coordinate)
+                            }
+                        )
+
+                        Text(viewModel.coordinateSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if viewModel.isReverseGeocoding {
+                            ProgressView("Updating place name...")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
+                        Text("Search, GPS, and manual coordinates all stay synced with this pin.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
-                Section("Map Pin") {
-                    LocationMapPicker(
-                        selectedCoordinate: viewModel.selectedCoordinate,
-                        mapFocusCoordinate: viewModel.mapFocusCoordinate,
-                        mapFocusVersion: viewModel.mapFocusVersion,
-                        onMapSelectionChanged: { coordinate in
-                            viewModel.updateMapPin(to: coordinate)
-                        }
-                    )
+                Section {
+                    ArcFeatureCard {
+                        ArcFeatureTitle(
+                            systemImage: "number",
+                            title: "Manual Coordinates",
+                            subtitle: "Use direct latitude and longitude entry when you need exact numeric control."
+                        )
 
-                    Text(viewModel.coordinateSummary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        editorTextField("Latitude", text: $viewModel.latitudeText)
+                            .keyboardType(.decimalPad)
 
-                    if viewModel.isReverseGeocoding {
-                        ProgressView("Updating place name...")
+                        editorTextField("Longitude", text: $viewModel.longitudeText)
+                            .keyboardType(.decimalPad)
                     }
-
-                    Text("Pan the map to move the pin. Search, GPS, and manual coordinates keep this pin in sync.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-
-                Section("Coordinates") {
-                    TextField("Latitude", text: $viewModel.latitudeText)
-                        .keyboardType(.decimalPad)
-                    TextField("Longitude", text: $viewModel.longitudeText)
-                        .keyboardType(.decimalPad)
-                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
                 if let errorMessage = viewModel.errorMessage {
                     Section {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
+                        ArcFeatureCard(accent: .red) {
+                            Text(errorMessage)
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
             }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(ArcSceneBackground())
             .navigationTitle(viewModel.navigationTitle)
+            .navigationBarTitleDisplayMode(.inline)
             .task {
                 await viewModel.loadDefaultLocationIfNeeded()
             }
@@ -166,6 +253,18 @@ struct LocationEditorView: View {
 
         onSave(draft)
         dismiss()
+    }
+
+    private func editorTextField(_ title: LocalizedStringKey, text: Binding<String>) -> some View {
+        TextField(title, text: text)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+            }
     }
 }
 
@@ -205,6 +304,7 @@ private struct LocationMapPicker: View {
         }
         .frame(minHeight: 280)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: Color.black.opacity(0.08), radius: 16, y: 10)
         .overlay(alignment: .center) {
             VStack(spacing: 0) {
                 Image(systemName: "mappin.circle.fill")

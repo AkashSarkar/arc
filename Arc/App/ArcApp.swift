@@ -8,11 +8,13 @@ struct ArcApp: App {
     var body: some Scene {
         WindowGroup {
             HomeView(
-                aiService: container.aiService,
+                makeAIService: container.makeAIService,
+                apiKeyStore: container.apiKeyStore,
+                defaultAIConfiguration: container.defaultAIConfiguration,
                 locationEditorServices: container.locationEditorServices
             )
             .tint(ArcPalette.tint)
         }
-        .modelContainer(for: [ShootLocation.self, ShootPlan.self, ShootPlanItem.self])
+        .modelContainer(for: [ShootLocation.self, ShootPlan.self, ShootPlanItem.self, LLMProfile.self])
     }
 }

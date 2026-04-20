@@ -5,6 +5,7 @@ struct PlanView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: PlanViewModel
+    @State private var navigationTarget: PlanNavigationTarget?
 
     init(location: ShootLocation, aiService: any AIServicing) {
         self.location = location
@@ -126,9 +127,41 @@ struct PlanView: View {
                             subtitle: "Saved for field and review."
                         )
 
+                        Text(savedPlanSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("To edit this plan, change the notes, output, or timing above and generate again. The saved checklist updates in place.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
                         Text(viewModel.response)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
+
+                        HStack(spacing: 10) {
+                            Button {
+                                navigationTarget = .field
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checklist")
+                                    Text("Open Field")
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glassProminent)
+
+                            Button {
+                                navigationTarget = .review
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "photo.on.rectangle")
+                                    Text("Open Review")
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass)
+                        }
                     }
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                     .listRowBackground(Color.clear)
@@ -144,6 +177,14 @@ struct PlanView: View {
         .onChange(of: viewModel.shootStartTime) { _, _ in
             viewModel.ensureDefaultWindowTimes()
         }
+        .navigationDestination(item: $navigationTarget) { target in
+            switch target {
+            case .field:
+                FieldView(location: location)
+            case .review:
+                ReviewView(location: location)
+            }
+        }
     }
 
     private var planSummary: String {
@@ -153,6 +194,21 @@ struct PlanView: View {
 
         return "\(viewModel.outputIntent.defaultShotCount) shots. Use current conditions."
     }
+
+    private var savedPlanSummary: String {
+        guard let createdAt = location.plan?.createdAt else {
+            return "This draft is saved automatically when generation succeeds."
+        }
+
+        return "Saved automatically on \(createdAt.formatted(date: .abbreviated, time: .shortened))."
+    }
+}
+
+private enum PlanNavigationTarget: String, Identifiable {
+    case field
+    case review
+
+    var id: String { rawValue }
 }
 
 private struct PlanLocationContextRow: View {

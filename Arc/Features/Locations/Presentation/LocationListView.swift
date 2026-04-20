@@ -3,11 +3,14 @@ import SwiftUI
 
 struct LocationListView: View {
     let aiService: any AIServicing
+    let apiKeyStore: any APIKeyProviding
+    let defaultAIConfiguration: AIConfiguration
     let locationEditorServices: LocationEditorServiceFactory
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ShootLocation.createdAt, order: .reverse) private var locations: [ShootLocation]
     @State private var isPresentingAddLocation = false
+    @State private var isPresentingSettings = false
 
     private var heroBadges: [ArcHeroBadge] {
         [
@@ -63,6 +66,15 @@ struct LocationListView: View {
         .background(ArcSceneBackground())
         .navigationTitle("Locations")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isPresentingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("Open settings")
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     isPresentingAddLocation = true
@@ -80,6 +92,14 @@ struct LocationListView: View {
                         latitude: draft.coordinate.latitude,
                         longitude: draft.coordinate.longitude
                     )
+                )
+            }
+        }
+        .sheet(isPresented: $isPresentingSettings) {
+            NavigationStack {
+                SettingsView(
+                    apiKeyStore: apiKeyStore,
+                    defaultAIConfiguration: defaultAIConfiguration
                 )
             }
         }

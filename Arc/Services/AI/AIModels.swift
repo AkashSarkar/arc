@@ -23,10 +23,25 @@ struct ChatCompletionsResponse: Decodable {
     struct Choice: Decodable {
         struct Message: Decodable {
             let role: String
-            let content: String
+            let content: String?
+            let reasoningContent: String?
+
+            enum CodingKeys: String, CodingKey {
+                case role
+                case content
+                case reasoningContent = "reasoning_content"
+            }
         }
 
+        let index: Int?
         let message: Message
+        let finishReason: String?
+
+        enum CodingKeys: String, CodingKey {
+            case index
+            case message
+            case finishReason = "finish_reason"
+        }
     }
 
     let choices: [Choice]

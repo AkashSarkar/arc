@@ -2,16 +2,23 @@ import SwiftUI
 
 struct HomeView: View {
     let aiService: any AIServicing
+    let locationEditorServices: LocationEditorServiceFactory
 
     var body: some View {
         NavigationStack {
-            LocationListView(aiService: aiService)
+            LocationListView(
+                aiService: aiService,
+                locationEditorServices: locationEditorServices
+            )
         }
     }
 }
 
 #Preview {
-    HomeView(aiService: PreviewAIService())
+    HomeView(
+        aiService: PreviewAIService(),
+        locationEditorServices: .live
+    )
 }
 
 private struct PreviewAIService: AIServicing {

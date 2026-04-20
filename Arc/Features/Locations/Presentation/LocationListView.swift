@@ -3,6 +3,7 @@ import SwiftUI
 
 struct LocationListView: View {
     let aiService: any AIServicing
+    let locationEditorServices: LocationEditorServiceFactory
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ShootLocation.createdAt, order: .reverse) private var locations: [ShootLocation]
@@ -19,7 +20,11 @@ struct LocationListView: View {
             } else {
                 ForEach(locations) { location in
                     NavigationLink {
-                        LocationDetailView(location: location, aiService: aiService)
+                        LocationDetailView(
+                            location: location,
+                            aiService: aiService,
+                            locationEditorServices: locationEditorServices
+                        )
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(location.name)
@@ -45,8 +50,14 @@ struct LocationListView: View {
             }
         }
         .sheet(isPresented: $isPresentingAddLocation) {
-            AddLocationView { location in
-                modelContext.insert(location)
+            LocationEditorView(services: locationEditorServices) { draft in
+                modelContext.insert(
+                    ShootLocation(
+                        name: draft.name,
+                        latitude: draft.coordinate.latitude,
+                        longitude: draft.coordinate.longitude
+                    )
+                )
             }
         }
     }

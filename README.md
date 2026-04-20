@@ -1,3 +1,43 @@
+# Arc — Engineering Baseline
+
+## Current folder structure (industry-standard starter)
+
+```text
+Arc/Arc/
+  App/
+    ArcApp.swift
+    AppContainer.swift
+  Core/
+    Configuration/AIConfiguration.swift
+    Networking/{HTTPClient.swift, NetworkError.swift}
+    RateLimiting/FixedWindowRateLimiter.swift
+    Security/KeychainStore.swift
+  Services/
+    AI/{AIService.swift, AIModels.swift, OpenAICompatibleAIService.swift}
+  Features/
+    Home/
+      Presentation/HomeView.swift
+      ViewModels/HomeViewModel.swift
+  Assets.xcassets
+```
+
+## Security and cost-control defaults implemented
+
+- API keys are never hardcoded and are read from Keychain (`KeychainStore`).
+- Network calls use `URLSessionConfiguration.ephemeral` to reduce sensitive persistence.
+- AI requests are gated by a fixed-window limiter (`FixedWindowRateLimiter`) to cap requests-per-minute.
+- Runtime AI config is loaded from `Info.plist` keys (`AI_BASE_URL`, `AI_MODEL_NAME`, `AI_REQUESTS_PER_MINUTE`, etc.), so production limits can be tightened without refactoring service logic.
+- The AI service fails closed if no key is present (`missingAPIKey`), preventing accidental unauthenticated traffic.
+
+## Next recommended hardening
+
+- Add request-level token budgeting and daily spend caps.
+- Add provider allowlist validation for `AI_BASE_URL` in release builds.
+- Add retry policy with exponential backoff only for transient errors (5xx/429).
+- Add server-side proxy before production launch to avoid exposing provider keys in client apps.
+
+---
+
 # Shot Planner — Software Requirements & Build Plan (v2)
 
 **Working title:** Frame (placeholder)

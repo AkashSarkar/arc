@@ -11,55 +11,83 @@ struct PlanView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Prompt")
-                .font(.headline)
-
-            TextEditor(text: $viewModel.prompt)
-                .frame(minHeight: 140)
-                .padding(8)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-                }
-
-            Button {
-                Task {
-                    await viewModel.generatePlan()
-                }
-            } label: {
-                HStack {
-                    if viewModel.isLoading {
-                        ProgressView()
-                            .controlSize(.small)
+        Form {
+            Section("Output") {
+                Picker("Intent", selection: $viewModel.outputIntent) {
+                    ForEach(OutputIntent.allCases) { intent in
+                        Text(intent.title)
+                            .tag(intent)
                     }
-                    Text(viewModel.isLoading ? "Generating..." : "Generate Plan")
                 }
-                .frame(maxWidth: .infinity)
+
+                Text("The generated plan will target a \(viewModel.outputIntent.promptLabel) with \(viewModel.outputIntent.defaultShotCount) suggested shots.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(viewModel.isLoading)
+
+            Section("Shoot Window") {
+                Picker("Timing", selection: $viewModel.shootWindowMode) {
+                    ForEach(ShootWindowMode.allCases) { mode in
+                        Text(mode.title)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if viewModel.shootWindowMode == .custom {
+                    DatePicker("Date", selection: $viewModel.shootDate, displayedComponents: .date)
+                    DatePicker("Start", selection: $viewModel.shootStartTime, displayedComponents: .hourAndMinute)
+                    DatePicker("End", selection: $viewModel.shootEndTime, displayedComponents: .hourAndMinute)
+                }
+
+                Text(viewModel.shootWindowSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Creative Notes") {
+                TextEditor(text: $viewModel.notes)
+                    .frame(minHeight: 140)
+            }
+
+            Section {
+                Button {
+                    Task {
+                        await viewModel.generatePlan(for: location)
+                    }
+                } label: {
+                    HStack {
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+
+                        Text(viewModel.isLoading ? "Generating..." : "Generate Plan")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.isLoading)
+            }
 
             if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
+                Section {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                }
             }
 
             if !viewModel.response.isEmpty {
-                Text("Response")
-                    .font(.headline)
-                ScrollView {
+                Section("Response") {
                     Text(viewModel.response)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
                 }
             }
-
-            Spacer()
         }
-        .padding()
         .navigationTitle("Plan")
-        .onAppear {
-            viewModel.applyDefaultPromptIfNeeded(for: location)
+        .onChange(of: viewModel.shootStartTime) { _, _ in
+            viewModel.ensureDefaultWindowTimes()
         }
     }
 }

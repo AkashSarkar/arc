@@ -4,12 +4,20 @@ struct AppContainer {
     let defaultAIConfiguration: AIConfiguration
     let makeAIService: (LLMProfile?) -> any AIServicing
     let apiKeyStore: any APIKeyProviding
+    let locationEnricher: any LocationEnriching
     let locationEditorServices: LocationEditorServiceFactory
 
     static let live: AppContainer = {
         let configuration = AIConfiguration.fromBundle()
         let keychainStore = KeychainStore()
         let httpClient = URLSessionHTTPClient()
+        let locationEnricher = LocationEnricher(
+            overpassClient: OverpassAPIClient(httpClient: httpClient),
+            wikipediaClient: WikipediaAPIClient(httpClient: httpClient),
+            flickrClient: FlickrAPIClient(httpClient: httpClient, apiKeyProvider: keychainStore),
+            openMeteoClient: OpenMeteoAPIClient(httpClient: httpClient),
+            sunMoonCalculator: SunMoonCalculator()
+        )
 
         return AppContainer(
             defaultAIConfiguration: configuration,
@@ -26,6 +34,7 @@ struct AppContainer {
                 )
             },
             apiKeyStore: keychainStore,
+            locationEnricher: locationEnricher,
             locationEditorServices: .live
         )
     }()

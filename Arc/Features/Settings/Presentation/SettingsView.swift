@@ -313,7 +313,7 @@ private struct LLMProfileEditorView: View {
         _name = State(initialValue: profile?.name ?? "")
         _baseURLString = State(initialValue: profile?.baseURLString ?? defaultAIConfiguration.baseURL.absoluteString)
         _modelName = State(initialValue: profile?.modelName ?? defaultAIConfiguration.modelName)
-        _requiresAPIKey = State(initialValue: profile?.requiresAPIKey ?? defaultAIConfiguration.requiresAPIKey)
+        _requiresAPIKey = State(initialValue: profile?.requiresAPIKey ?? false)
         _useStructuredOutput = State(initialValue: profile?.useStructuredOutput ?? false)
         _timeoutText = State(initialValue: String(Int((profile?.timeoutSeconds ?? defaultAIConfiguration.timeoutSeconds).rounded())))
         _isActive = State(initialValue: profile?.isActive ?? shouldDefaultToActive)
@@ -484,7 +484,7 @@ private struct LLMProfileEditorView: View {
         let resolvedAccount = requiresAPIKey ? (existingAccount ?? LLMProfile.keychainAccount(for: targetProfile.id)) : nil
 
         if requiresAPIKey && cleanAPIKey.isEmpty && !hasStoredAPIKey {
-            errorMessage = "API key is required for this profile."
+            errorMessage = "API key is required for this profile. Turn off Requires API key for local runners like LM Studio."
             return
         }
 

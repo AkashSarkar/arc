@@ -11,6 +11,7 @@ struct ArcApp: App {
                 makeAIService: container.makeAIService,
                 apiKeyStore: container.apiKeyStore,
                 defaultAIConfiguration: container.defaultAIConfiguration,
+                locationEnricher: container.locationEnricher,
                 locationEditorServices: container.locationEditorServices
             )
             .tint(ArcPalette.tint)

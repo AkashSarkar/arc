@@ -103,10 +103,6 @@ final class CurrentLocationService: NSObject, CurrentLocationServicing {
     }
 
     func requestCurrentLocation() async throws -> LocationCoordinate {
-        guard CLLocationManager.locationServicesEnabled() else {
-            throw LocationServiceError.locationServicesDisabled
-        }
-
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
             break
@@ -178,6 +174,34 @@ extension CurrentLocationService: CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if let clError = error as? CLError {
+            switch clError.code {
+            case .denied:
+                let resolvedError: any Error
+
+                switch manager.authorizationStatus {
+                case .authorizedAlways, .authorizedWhenInUse:
+                    resolvedError = LocationServiceError.locationServicesDisabled
+                case .denied:
+                    resolvedError = LocationServiceError.permissionDenied
+                case .restricted:
+                    resolvedError = LocationServiceError.permissionRestricted
+                case .notDetermined:
+                    resolvedError = LocationServiceError.unableToDetermineLocation
+                @unknown default:
+                    resolvedError = LocationServiceError.unableToDetermineLocation
+                }
+
+                resumeLocation(with: .failure(resolvedError))
+                return
+            case .locationUnknown, .network:
+                resumeLocation(with: .failure(LocationServiceError.unableToDetermineLocation))
+                return
+            default:
+                break
+            }
+        }
+
         resumeLocation(with: .failure(error))
     }
 }

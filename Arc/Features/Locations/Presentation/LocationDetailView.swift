@@ -3,6 +3,7 @@ import SwiftUI
 struct LocationDetailView: View {
     let location: ShootLocation
     let aiService: any AIServicing
+    let locationEnricher: any LocationEnriching
     let locationEditorServices: LocationEditorServiceFactory
 
     @State private var isPresentingEditLocation = false
@@ -16,7 +17,19 @@ struct LocationDetailView: View {
             badges.append(ArcHeroBadge(label: "\(plan.items.count) shots planned", systemImage: "sparkles"))
         }
 
+        if let lastEnrichedAt = location.lastEnrichedAt {
+            badges.append(ArcHeroBadge(label: lastEnrichedAt.formatted(date: .abbreviated, time: .shortened), systemImage: "map.circle"))
+        }
+
         return badges
+    }
+
+    private var contextSubtitle: String {
+        if let lastEnrichedAt = location.lastEnrichedAt {
+            return "Context cached \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened))."
+        }
+
+        return "Refresh location context and inspect the cached JSON bundle."
     }
 
     private var planSubtitle: String {
@@ -62,6 +75,20 @@ struct LocationDetailView: View {
             }
 
             Section {
+                NavigationLink {
+                    LocationContextView(location: location, locationEnricher: locationEnricher)
+                } label: {
+                    WorkflowCard(
+                        title: "Context",
+                        subtitle: contextSubtitle,
+                        systemImage: "map.circle",
+                        accent: ArcPalette.glowSecondary
+                    )
+                }
+                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+
                 NavigationLink {
                     PlanView(location: location, aiService: aiService)
                 } label: {

@@ -5,6 +5,7 @@ struct HomeView: View {
     let makeAIService: (LLMProfile?) -> any AIServicing
     let apiKeyStore: any APIKeyProviding
     let defaultAIConfiguration: AIConfiguration
+    let locationEnricher: any LocationEnriching
     let locationEditorServices: LocationEditorServiceFactory
 
     @Environment(\.modelContext) private var modelContext
@@ -24,6 +25,7 @@ struct HomeView: View {
                 aiService: aiService,
                 apiKeyStore: apiKeyStore,
                 defaultAIConfiguration: defaultAIConfiguration,
+                locationEnricher: locationEnricher,
                 locationEditorServices: locationEditorServices
             )
         }
@@ -33,16 +35,21 @@ struct HomeView: View {
     }
 
     private func seedDefaultProfileIfNeeded() {
+        var didChangeProfiles = false
+
         if llmProfiles.isEmpty {
             modelContext.insert(LLMProfile.seededDefault(from: defaultAIConfiguration))
+            didChangeProfiles = true
+        } else if activeProfile == nil, let firstProfile = llmProfiles.first {
+            firstProfile.isActive = true
+            didChangeProfiles = true
+        }
+
+        guard didChangeProfiles else {
             return
         }
 
-        guard activeProfile == nil, let firstProfile = llmProfiles.first else {
-            return
-        }
-
-        firstProfile.isActive = true
+        try? modelContext.save()
     }
 }
 
@@ -51,6 +58,7 @@ struct HomeView: View {
         makeAIService: { _ in PreviewAIService() },
         apiKeyStore: PreviewAPIKeyStore(),
         defaultAIConfiguration: AIConfiguration.fromBundle(),
+        locationEnricher: PreviewLocationEnricher(),
         locationEditorServices: .live
     )
     .modelContainer(for: [ShootLocation.self, ShootPlan.self, ShootPlanItem.self, LLMProfile.self], inMemory: true)
@@ -71,5 +79,45 @@ private struct PreviewAPIKeyStore: APIKeyProviding {
     }
 
     func deleteAPIKey(for account: String) throws {
+    }
+}
+
+private struct PreviewLocationEnricher: LocationEnriching {
+    func enrich(location: ShootLocation, shootWindow: DateInterval?) async -> LocationContextBundle {
+        let start = shootWindow?.start ?? Date()
+        let end = shootWindow?.end ?? start.addingTimeInterval(2 * 3600)
+        return LocationContextBundle(
+            generatedAt: Date(),
+            location: .init(name: location.name, latitude: location.latitude, longitude: location.longitude),
+            shootWindow: .init(start: start, end: end, label: "Preview window"),
+            highlights: ["Preview enrichment context."],
+            providerStatuses: .init(
+                overpass: .success("Preview data."),
+                wikipedia: .success("Preview data."),
+                flickr: .skipped("No preview key."),
+                openMeteo: .success("Preview forecast."),
+                sunMoon: .success("Preview sun and moon data.")
+            ),
+            pointsOfInterest: [],
+            wikipedia: nil,
+            referenceImages: [],
+            weather: nil,
+            sunMoon: .init(
+                sunrise: nil,
+                sunset: nil,
+                civilDawn: nil,
+                civilDusk: nil,
+                blueHourMorningStart: nil,
+                blueHourMorningEnd: nil,
+                goldenHourMorningStart: nil,
+                goldenHourMorningEnd: nil,
+                goldenHourEveningStart: nil,
+                goldenHourEveningEnd: nil,
+                blueHourEveningStart: nil,
+                blueHourEveningEnd: nil,
+                moonPhaseName: "Preview",
+                moonIlluminationPercent: 0
+            )
+        )
     }
 }

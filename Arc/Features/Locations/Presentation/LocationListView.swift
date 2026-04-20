@@ -5,6 +5,7 @@ struct LocationListView: View {
     let aiService: any AIServicing
     let apiKeyStore: any APIKeyProviding
     let defaultAIConfiguration: AIConfiguration
+    let locationEnricher: any LocationEnriching
     let locationEditorServices: LocationEditorServiceFactory
 
     @Environment(\.modelContext) private var modelContext
@@ -48,6 +49,7 @@ struct LocationListView: View {
                             LocationDetailView(
                                 location: location,
                                 aiService: aiService,
+                                locationEnricher: locationEnricher,
                                 locationEditorServices: locationEditorServices
                             )
                         } label: {
@@ -86,13 +88,19 @@ struct LocationListView: View {
         }
         .sheet(isPresented: $isPresentingAddLocation) {
             LocationEditorView(services: locationEditorServices) { draft in
-                modelContext.insert(
-                    ShootLocation(
-                        name: draft.name,
-                        latitude: draft.coordinate.latitude,
-                        longitude: draft.coordinate.longitude
-                    )
+                let location = ShootLocation(
+                    name: draft.name,
+                    latitude: draft.coordinate.latitude,
+                    longitude: draft.coordinate.longitude
                 )
+                modelContext.insert(location)
+
+                do {
+                    try modelContext.save()
+                } catch {
+                    modelContext.delete(location)
+                    throw error
+                }
             }
         }
         .sheet(isPresented: $isPresentingSettings) {

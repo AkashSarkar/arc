@@ -2,6 +2,7 @@ import Foundation
 
 struct AppContainer {
     let aiService: any AIServicing
+    let locationEditorServices: LocationEditorServiceFactory
 
     static let live: AppContainer = {
         let configuration = AIConfiguration.fromBundle()
@@ -19,6 +20,9 @@ struct AppContainer {
             rateLimiter: rateLimiter
         )
 
-        return AppContainer(aiService: service)
+        return AppContainer(
+            aiService: service,
+            locationEditorServices: .live
+        )
     }()
 }

@@ -8,6 +8,8 @@ final class ShootLocation {
     var latitude: Double
     var longitude: Double
     var createdAt: Date
+    var enrichmentJSON: String
+    var lastEnrichedAt: Date?
     @Relationship(deleteRule: .cascade, inverse: \ShootPlan.location) var plan: ShootPlan?
 
     init(
@@ -16,6 +18,8 @@ final class ShootLocation {
         latitude: Double,
         longitude: Double,
         createdAt: Date = Date(),
+        enrichmentJSON: String = "",
+        lastEnrichedAt: Date? = nil,
         plan: ShootPlan? = nil
     ) {
         self.id = id
@@ -23,6 +27,8 @@ final class ShootLocation {
         self.latitude = latitude
         self.longitude = longitude
         self.createdAt = createdAt
+        self.enrichmentJSON = enrichmentJSON
+        self.lastEnrichedAt = lastEnrichedAt
         self.plan = plan
     }
 }

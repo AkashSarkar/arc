@@ -5,7 +5,7 @@ import SwiftData
 @MainActor
 @Observable
 final class PlanViewModel {
-    private let aiService: any AIServicing
+    private let shotListGenerator: any ShotListGenerating
     private let calendar = Calendar.current
 
     var notes: String = ""
@@ -18,8 +18,12 @@ final class PlanViewModel {
     var shootStartTime: Date = Date()
     var shootEndTime: Date = Calendar.current.date(byAdding: .hour, value: 2, to: Date()) ?? Date()
 
-    init(aiService: any AIServicing, existingPlan: ShootPlan? = nil) {
-        self.aiService = aiService
+    init(
+        aiService: any AIServicing,
+        existingPlan: ShootPlan? = nil,
+        shotListGenerator: (any ShotListGenerating)? = nil
+    ) {
+        self.shotListGenerator = shotListGenerator ?? ShotListGenerator(aiService: aiService)
 
         guard let existingPlan else {
             return
@@ -53,9 +57,7 @@ final class PlanViewModel {
     }
 
     func generatePlan(for location: ShootLocation, modelContext: ModelContext) async {
-        let prompt = buildPrompt(for: location)
-        guard !prompt.isEmpty else {
-            errorMessage = "Set up the plan details first."
+        guard let input = generationInput() else {
             return
         }
 
@@ -65,18 +67,17 @@ final class PlanViewModel {
         defer { isLoading = false }
 
         do {
-            let rawResponse = try await aiService.generateShotPlan(for: prompt)
-            let drafts = ShotPlanParser.parse(response: rawResponse)
+            let generationResult = try await shotListGenerator.generate(for: location, input: input)
 
             persistPlan(
                 for: location,
-                rawResponse: rawResponse,
-                drafts: drafts,
+                rawResponse: generationResult.rawResponse,
+                drafts: generationResult.drafts,
                 modelContext: modelContext
             )
 
             try modelContext.save()
-            response = ShotPlanParser.formattedResponse(from: drafts, fallback: rawResponse)
+            response = ShotPlanParser.formattedResponse(from: generationResult.drafts, fallback: generationResult.rawResponse)
         } catch {
             response = ""
             errorMessage = error.localizedDescription
@@ -90,34 +91,16 @@ final class PlanViewModel {
         }
     }
 
-    private func buildPrompt(for location: ShootLocation) -> String {
-        guard let shootWindowText = shootWindowPromptText() else {
-            return ""
-        }
-
-        let cleanNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let locationCoordinates = "\(location.latitude.formatted(.number.precision(.fractionLength(5)))), \(location.longitude.formatted(.number.precision(.fractionLength(5))))"
-
-        var promptSections = [
-            "Create a \(outputIntent.defaultShotCount)-shot plan optimized for a \(outputIntent.promptLabel).",
-            "Location: \(location.name) at \(locationCoordinates).",
-            "Shoot window: \(shootWindowText).",
-            "Each shot should be specific to the location and include a narrative role, composition idea, and practical shooting guidance.",
-            "Return exactly \(outputIntent.defaultShotCount) numbered lines in this format: Short shot title | role | practical guidance.",
-            "Do not add headings, intro copy, markdown tables, or closing notes.",
-        ]
-
-        if !cleanNotes.isEmpty {
-            promptSections.append("Additional creative notes: \(cleanNotes)")
-        }
-
-        return promptSections.joined(separator: "\n")
-    }
-
-    private func shootWindowPromptText() -> String? {
+    private func generationInput() -> ShotListGenerationInput? {
         switch shootWindowMode {
         case .now:
-            return "right now"
+            return ShotListGenerationInput(
+                outputIntent: outputIntent,
+                notes: notes,
+                shootWindowMode: .now,
+                shootWindowStart: Date(),
+                shootWindowEnd: Date().addingTimeInterval(2 * 3600)
+            )
         case .custom:
             let window = customShootWindow()
             guard window.end > window.start else {
@@ -125,9 +108,13 @@ final class PlanViewModel {
                 return nil
             }
 
-            let startText = window.start.formatted(date: .abbreviated, time: .shortened)
-            let endText = window.end.formatted(date: .omitted, time: .shortened)
-            return "\(startText) to \(endText)"
+            return ShotListGenerationInput(
+                outputIntent: outputIntent,
+                notes: notes,
+                shootWindowMode: .custom,
+                shootWindowStart: window.start,
+                shootWindowEnd: window.end
+            )
         }
     }
 

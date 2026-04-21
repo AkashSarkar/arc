@@ -5,12 +5,12 @@ struct LocationEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var viewModel: LocationEditorViewModel
 
-    private let onSave: (LocationDraftValue) -> Void
+    private let onSave: (LocationDraftValue) throws -> Void
 
     init(
         location: ShootLocation? = nil,
         services: LocationEditorServiceFactory,
-        onSave: @escaping (LocationDraftValue) -> Void
+        onSave: @escaping (LocationDraftValue) throws -> Void
     ) {
         _viewModel = State(
             initialValue: LocationEditorViewModel(
@@ -257,8 +257,12 @@ struct LocationEditorView: View {
             return
         }
 
-        onSave(draft)
-        dismiss()
+        do {
+            try onSave(draft)
+            dismiss()
+        } catch {
+            viewModel.errorMessage = error.localizedDescription
+        }
     }
 
     private func editorTextField(_ title: LocalizedStringKey, text: Binding<String>) -> some View {

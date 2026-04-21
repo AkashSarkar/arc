@@ -1,12 +1,15 @@
 import Foundation
 
 enum NetworkError: LocalizedError {
+    case invalidRequest
     case invalidResponse
     case serverError(statusCode: Int, message: String?)
     case decodingFailure
 
     var errorDescription: String? {
         switch self {
+        case .invalidRequest:
+            return "Failed to build the network request."
         case .invalidResponse:
             return "Received an invalid response from the server."
         case let .serverError(statusCode, message):

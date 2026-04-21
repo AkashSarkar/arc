@@ -3,6 +3,7 @@ import SwiftUI
 struct LocationDetailView: View {
     let location: ShootLocation
     let aiService: any AIServicing
+    let locationEnricher: any LocationEnriching
     let locationEditorServices: LocationEditorServiceFactory
 
     @State private var isPresentingEditLocation = false
@@ -63,7 +64,7 @@ struct LocationDetailView: View {
 
             Section {
                 NavigationLink {
-                    PlanView(location: location, aiService: aiService)
+                    PlanView(location: location, aiService: aiService, locationEnricher: locationEnricher)
                 } label: {
                     WorkflowCard(
                         title: "Plan",

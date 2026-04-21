@@ -337,11 +337,13 @@ Build a small evaluation harness: 5 locations you know well (Jozankei, Otaru can
 
 **Weekend 4 — Shot list UI + field mode**
 - [ ] Liquid Glass card stack (Plan view)
+- [ ] Editable draft plan review before field entry: adjust, remove, or refine generated shots
+- [ ] Explicit Save action in Plan view so field mode uses only the plan you approved
 - [ ] Field Mode (high-contrast opaque variant)
 - [ ] Completion toggling, progress indicator
 - [ ] Offline caching (download all reference images on plan generation)
 - [ ] **Physical device, outside, in sunlight. Look at it. Fix what breaks.**
-- Deliverable: generate a plan, open offline, check off shots in the field
+- Deliverable: generate a plan, review/edit it, save the approved version, open offline, check off shots in the field
 
 **Weekend 5 — Review pipeline**
 - [ ] PhotoKit: read day's photos

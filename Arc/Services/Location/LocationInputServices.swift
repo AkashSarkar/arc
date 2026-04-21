@@ -103,10 +103,6 @@ final class CurrentLocationService: NSObject, CurrentLocationServicing {
     }
 
     func requestCurrentLocation() async throws -> LocationCoordinate {
-        guard CLLocationManager.locationServicesEnabled() else {
-            throw LocationServiceError.locationServicesDisabled
-        }
-
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
             break
@@ -178,6 +174,34 @@ extension CurrentLocationService: CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if let clError = error as? CLError {
+            switch clError.code {
+            case .denied:
+                let resolvedError: any Error
+
+                switch manager.authorizationStatus {
+                case .authorizedAlways, .authorizedWhenInUse:
+                    resolvedError = LocationServiceError.locationServicesDisabled
+                case .denied:
+                    resolvedError = LocationServiceError.permissionDenied
+                case .restricted:
+                    resolvedError = LocationServiceError.permissionRestricted
+                case .notDetermined:
+                    resolvedError = LocationServiceError.unableToDetermineLocation
+                @unknown default:
+                    resolvedError = LocationServiceError.unableToDetermineLocation
+                }
+
+                resumeLocation(with: .failure(resolvedError))
+                return
+            case .locationUnknown, .network:
+                resumeLocation(with: .failure(LocationServiceError.unableToDetermineLocation))
+                return
+            default:
+                break
+            }
+        }
+
         resumeLocation(with: .failure(error))
     }
 }
@@ -293,22 +317,24 @@ final class AppleReverseGeocodingService: ReverseGeocodingServicing {
             return nil
         }
 
-        let mapItems: [MKMapItem] = try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<[MKMapItem], Error>) in
+        return try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<String?, Error>) in
             request.getMapItems(completionHandler: { mapItems, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return
                 }
 
-                continuation.resume(returning: mapItems ?? [])
+                let resolvedName = (mapItems ?? [])
+                    .lazy
+                    .compactMap(AppleReverseGeocodingService.preferredName)
+                    .first
+                continuation.resume(returning: resolvedName)
             })
         }
+    }
 
-        guard let item = mapItems.first else {
-            return nil
-        }
-
+    private static func preferredName(from item: MKMapItem) -> String? {
         let address = item.address
         let addressRepresentations = item.addressRepresentations
         let candidates: [String?] = [
@@ -319,11 +345,10 @@ final class AppleReverseGeocodingService: ReverseGeocodingServicing {
             addressRepresentations?.regionName,
         ]
 
-        let normalizedCandidates = candidates.compactMap(normalizedValue)
-        return normalizedCandidates.first
+        return candidates.compactMap(normalizedValue).first
     }
 
-    private func normalizedValue(_ value: String?) -> String? {
+    private static func normalizedValue(_ value: String?) -> String? {
         guard let value else {
             return nil
         }

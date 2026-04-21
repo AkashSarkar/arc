@@ -3,11 +3,15 @@ import SwiftUI
 
 struct LocationListView: View {
     let aiService: any AIServicing
+    let apiKeyStore: any APIKeyProviding
+    let defaultAIConfiguration: AIConfiguration
+    let locationEnricher: any LocationEnriching
     let locationEditorServices: LocationEditorServiceFactory
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \ShootLocation.createdAt, order: .reverse) private var locations: [ShootLocation]
     @State private var isPresentingAddLocation = false
+    @State private var isPresentingSettings = false
 
     private var heroBadges: [ArcHeroBadge] {
         [
@@ -45,6 +49,7 @@ struct LocationListView: View {
                             LocationDetailView(
                                 location: location,
                                 aiService: aiService,
+                                locationEnricher: locationEnricher,
                                 locationEditorServices: locationEditorServices
                             )
                         } label: {
@@ -63,6 +68,15 @@ struct LocationListView: View {
         .background(ArcSceneBackground())
         .navigationTitle("Locations")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    isPresentingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("Open settings")
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     isPresentingAddLocation = true
@@ -74,12 +88,26 @@ struct LocationListView: View {
         }
         .sheet(isPresented: $isPresentingAddLocation) {
             LocationEditorView(services: locationEditorServices) { draft in
-                modelContext.insert(
-                    ShootLocation(
-                        name: draft.name,
-                        latitude: draft.coordinate.latitude,
-                        longitude: draft.coordinate.longitude
-                    )
+                let location = ShootLocation(
+                    name: draft.name,
+                    latitude: draft.coordinate.latitude,
+                    longitude: draft.coordinate.longitude
+                )
+                modelContext.insert(location)
+
+                do {
+                    try modelContext.save()
+                } catch {
+                    modelContext.delete(location)
+                    throw error
+                }
+            }
+        }
+        .sheet(isPresented: $isPresentingSettings) {
+            NavigationStack {
+                SettingsView(
+                    apiKeyStore: apiKeyStore,
+                    defaultAIConfiguration: defaultAIConfiguration
                 )
             }
         }

@@ -1,6 +1,12 @@
 import Foundation
 import SwiftData
 
+enum ShootStatus: Equatable {
+    case draft
+    case active
+    case completed
+}
+
 @Model
 final class ShootLocation {
     @Attribute(.unique) var id: UUID
@@ -30,5 +36,17 @@ final class ShootLocation {
         self.enrichmentJSON = enrichmentJSON
         self.lastEnrichedAt = lastEnrichedAt
         self.plan = plan
+    }
+
+    var status: ShootStatus {
+        guard let plan, plan.isApprovedForField else {
+            return .draft
+        }
+
+        if plan.completedAt != nil {
+            return .completed
+        }
+
+        return .active
     }
 }

@@ -1,0 +1,282 @@
+import SwiftData
+import SwiftUI
+
+struct PlanEditorSheet: View {
+    let location: ShootLocation
+    let aiService: any AIServicing
+    let referenceImageCache: any ReferenceImageCaching
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @State private var viewModel: PlanViewModel
+    @State private var editingItem: ShootPlanItem?
+    @State private var editTitle = ""
+    @State private var editRole = ""
+    @State private var editGuidance = ""
+
+    init(
+        location: ShootLocation,
+        aiService: any AIServicing,
+        referenceImageCache: any ReferenceImageCaching
+    ) {
+        self.location = location
+        self.aiService = aiService
+        self.referenceImageCache = referenceImageCache
+        _viewModel = State(
+            initialValue: PlanViewModel(
+                aiService: aiService,
+                existingPlan: location.plan,
+                referenceImageCache: referenceImageCache
+            )
+        )
+    }
+
+    private var planItems: [ShootPlanItem] {
+        location.plan?.orderedItems ?? []
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ArcHeroHeader(
+                        systemImage: "slider.horizontal.3",
+                        title: "Edit Plan",
+                        subtitle: "Tune the active checklist. Regenerating replaces the current items and keeps the shoot active."
+                    ) {
+                        Label(location.name, systemImage: "mappin.and.ellipse")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+
+                Section {
+                    ArcFeatureCard(accent: ArcPalette.tint) {
+                        ArcFeatureTitle(
+                            systemImage: "sparkles.rectangle.stack",
+                            title: "Generation",
+                            subtitle: "\(viewModel.outputIntent.defaultShotCount) shots. \(viewModel.shootWindowSummary)"
+                        )
+
+                        ShootPlanningControls(
+                            outputIntent: $viewModel.outputIntent,
+                            shootWindowMode: $viewModel.shootWindowMode,
+                            shootDate: $viewModel.shootDate,
+                            shootStartTime: $viewModel.shootStartTime,
+                            shootEndTime: $viewModel.shootEndTime
+                        )
+
+                        Button {
+                            Task {
+                                await regeneratePlan()
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                if viewModel.isLoading {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+
+                                Text(viewModel.isLoading ? "Regenerating..." : "Regenerate Checklist")
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .buttonStyle(.glassProminent)
+                        .disabled(viewModel.isLoading)
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+
+                Section {
+                    ArcFeatureCard(accent: ArcPalette.glowSecondary) {
+                        ArcFeatureTitle(
+                            systemImage: "note.text",
+                            title: "Notes",
+                            subtitle: nil,
+                            accent: ArcPalette.glowSecondary
+                        )
+
+                        ShootNotesEditor(notes: $viewModel.notes)
+
+                        Button {
+                            saveExistingPlanMetadata()
+                        } label: {
+                            Text("Save Notes")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+
+                if let errorMessage = viewModel.errorMessage {
+                    Section {
+                        ArcFeatureCard(accent: .red) {
+                            Text(errorMessage)
+                                .font(.subheadline)
+                                .foregroundStyle(.red)
+                        }
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                    }
+                }
+
+                Section {
+                    ArcFeatureCard(accent: ArcPalette.glowPrimary) {
+                        ArcFeatureTitle(
+                            systemImage: "checklist",
+                            title: "Checklist",
+                            subtitle: planItems.isEmpty ? "No items are saved yet." : "\(planItems.count) live items",
+                            accent: ArcPalette.glowPrimary
+                        )
+
+                        if planItems.isEmpty {
+                            Text("Regenerate the plan to create a field checklist.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ShootPlanItemList(
+                                items: planItems,
+                                onEdit: beginEditing,
+                                onDelete: deleteItem
+                            )
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            }
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(ArcSceneBackground())
+            .navigationTitle("Plan")
+            .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: viewModel.shootStartTime) { _, _ in
+                viewModel.ensureDefaultWindowTimes()
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        saveExistingPlanMetadata()
+                        dismiss()
+                    }
+                }
+            }
+            .sheet(item: $editingItem) { _ in
+                editItemSheet
+            }
+        }
+    }
+
+    private var editItemSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Shot") {
+                    TextField("Title", text: $editTitle)
+                    TextField("Role", text: $editRole)
+                    TextField("Guidance", text: $editGuidance, axis: .vertical)
+                        .lineLimit(4, reservesSpace: true)
+                }
+            }
+            .navigationTitle("Edit Shot")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        editingItem = nil
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        saveItemEdits()
+                    }
+                }
+            }
+        }
+    }
+
+    private func regeneratePlan() async {
+        await viewModel.generatePlan(for: location, modelContext: modelContext)
+        guard location.plan?.items.isEmpty == false else {
+            return
+        }
+
+        viewModel.approveDraft(for: location, modelContext: modelContext)
+        location.plan?.completedAt = nil
+        try? modelContext.save()
+    }
+
+    private func saveExistingPlanMetadata() {
+        guard let plan = location.plan else {
+            return
+        }
+
+        plan.notes = viewModel.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        plan.outputIntentRawValue = viewModel.outputIntent.rawValue
+        plan.shootWindowModeRawValue = viewModel.shootWindowMode.rawValue
+        plan.shootWindowSummary = viewModel.shootWindowSummary
+        plan.shootDate = viewModel.shootDate
+        plan.shootStartTime = viewModel.shootStartTime
+        plan.shootEndTime = viewModel.shootEndTime
+        plan.isApprovedForField = true
+        plan.completedAt = nil
+        try? modelContext.save()
+    }
+
+    private func beginEditing(_ item: ShootPlanItem) {
+        editTitle = item.title
+        editRole = item.role
+        editGuidance = item.guidance
+        editingItem = item
+    }
+
+    private func saveItemEdits() {
+        guard let currentItem = editingItem else {
+            return
+        }
+
+        let cleanTitle = editTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanRole = editRole.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanGuidance = editGuidance.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleanTitle.isEmpty, !cleanGuidance.isEmpty else {
+            return
+        }
+
+        currentItem.title = cleanTitle
+        currentItem.role = cleanRole.isEmpty ? "Support" : cleanRole
+        currentItem.guidance = cleanGuidance
+        location.plan?.isApprovedForField = true
+        location.plan?.completedAt = nil
+        try? modelContext.save()
+        editingItem = nil
+    }
+
+    private func deleteItem(_ item: ShootPlanItem) {
+        guard let plan = location.plan else {
+            return
+        }
+
+        let remainingItems = plan.orderedItems.filter { $0.id != item.id }
+        for (index, remainingItem) in remainingItems.enumerated() {
+            remainingItem.orderIndex = index
+        }
+
+        plan.items.removeAll { $0.id == item.id }
+        plan.isApprovedForField = !plan.items.isEmpty
+        plan.completedAt = nil
+        modelContext.delete(item)
+        try? modelContext.save()
+    }
+}

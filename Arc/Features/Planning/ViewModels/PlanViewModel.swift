@@ -113,6 +113,7 @@ final class PlanViewModel {
 
         plan.isApprovedForField = true
         plan.approvedAt = Date()
+        plan.completedAt = nil
         isDraftApproved = true
         errorMessage = nil
 
@@ -209,6 +210,7 @@ final class PlanViewModel {
         plan.shootEndTime = shootEndTime
         plan.isApprovedForField = false
         plan.approvedAt = nil
+        plan.completedAt = nil
 
         for existingItem in Array(plan.items) {
             modelContext.delete(existingItem)

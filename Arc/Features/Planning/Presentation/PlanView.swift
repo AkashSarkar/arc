@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PlanView: View {
     let location: ShootLocation
+    let aiService: any AIServicing
     let locationEnricher: any LocationEnriching
     let referenceImageCache: any ReferenceImageCaching
 
@@ -23,6 +24,7 @@ struct PlanView: View {
         referenceImageCache: any ReferenceImageCaching
     ) {
         self.location = location
+        self.aiService = aiService
         self.locationEnricher = locationEnricher
         self.referenceImageCache = referenceImageCache
         _viewModel = State(
@@ -230,7 +232,13 @@ struct PlanView: View {
         .navigationDestination(item: $navigationTarget) { target in
             switch target {
             case .field:
-                FieldView(location: location)
+                FieldView(
+                    location: location,
+                    aiService: aiService,
+                    locationEnricher: locationEnricher,
+                    referenceImageCache: referenceImageCache,
+                    locationEditorServices: .live
+                )
             case .review:
                 ReviewView(location: location)
             case .context:
@@ -410,6 +418,7 @@ struct PlanView: View {
 
         plan.isApprovedForField = false
         plan.approvedAt = nil
+        plan.completedAt = nil
         viewModel.isDraftApproved = false
         try? modelContext.save()
     }

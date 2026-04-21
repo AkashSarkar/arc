@@ -15,6 +15,7 @@ final class ShootPlan {
     var shootEndTime: Date
     var isApprovedForField: Bool
     var approvedAt: Date?
+    var completedAt: Date?
     var location: ShootLocation?
     @Relationship(deleteRule: .cascade, inverse: \ShootPlanItem.plan) var items: [ShootPlanItem]
 
@@ -31,6 +32,7 @@ final class ShootPlan {
         shootEndTime: Date = Date(),
         isApprovedForField: Bool = false,
         approvedAt: Date? = nil,
+        completedAt: Date? = nil,
         location: ShootLocation? = nil
     ) {
         self.id = id
@@ -45,6 +47,7 @@ final class ShootPlan {
         self.shootEndTime = shootEndTime
         self.isApprovedForField = isApprovedForField
         self.approvedAt = approvedAt
+        self.completedAt = completedAt
         self.location = location
         self.items = []
     }

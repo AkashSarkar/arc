@@ -84,7 +84,13 @@ struct LocationDetailView: View {
                 .listRowSeparator(.hidden)
 
                 NavigationLink {
-                    FieldView(location: location)
+                    FieldView(
+                        location: location,
+                        aiService: aiService,
+                        locationEnricher: locationEnricher,
+                        referenceImageCache: referenceImageCache,
+                        locationEditorServices: locationEditorServices
+                    )
                 } label: {
                     WorkflowCard(
                         title: "Field",

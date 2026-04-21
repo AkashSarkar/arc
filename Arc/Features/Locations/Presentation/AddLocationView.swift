@@ -278,7 +278,7 @@ struct LocationEditorView: View {
     }
 }
 
-private struct LocationMapPicker: View {
+struct LocationMapPicker: View {
     let selectedCoordinate: LocationCoordinate?
     let mapFocusCoordinate: LocationCoordinate?
     let mapFocusVersion: Int

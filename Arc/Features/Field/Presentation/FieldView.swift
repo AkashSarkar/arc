@@ -3,21 +3,40 @@ import SwiftUI
 
 struct FieldView: View {
     let location: ShootLocation
+    let aiService: any AIServicing
+    let locationEnricher: any LocationEnriching
     let referenceImageCache: any ReferenceImageCaching
+    let locationEditorServices: LocationEditorServiceFactory
 
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @State private var cacheStatus = ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
+    @State private var isPresentingInfo = false
+    @State private var isPresentingPlanEditor = false
+    @State private var isPresentingEditLocation = false
+    @State private var isConfirmingDelete = false
+    @State private var isConfirmingFinish = false
+    @State private var hasDismissedCompletionPrompt = false
 
     init(
         location: ShootLocation,
-        referenceImageCache: any ReferenceImageCaching = DiskReferenceImageCache()
+        aiService: any AIServicing,
+        locationEnricher: any LocationEnriching,
+        referenceImageCache: any ReferenceImageCaching,
+        locationEditorServices: LocationEditorServiceFactory
     ) {
         self.location = location
+        self.aiService = aiService
+        self.locationEnricher = locationEnricher
         self.referenceImageCache = referenceImageCache
+        self.locationEditorServices = locationEditorServices
     }
 
     private var plan: ShootPlan? {
-        guard let existingPlan = location.plan, existingPlan.isApprovedForField else {
+        guard let existingPlan = location.plan,
+              existingPlan.isApprovedForField,
+              existingPlan.completedAt == nil
+        else {
             return nil
         }
 
@@ -46,6 +65,10 @@ struct FieldView: View {
 
     private var nextPendingItem: ShootPlanItem? {
         planItems.first(where: { !$0.isCaptured })
+    }
+
+    private var shouldShowCompletionPrompt: Bool {
+        hasPlanItems && remainingCount == 0 && !hasDismissedCompletionPrompt
     }
 
     private var heroBadges: [ArcHeroBadge] {
@@ -134,6 +157,17 @@ struct FieldView: View {
                             }
                             .buttonStyle(FieldSecondaryButtonStyle())
                         }
+
+                        if shouldShowCompletionPrompt {
+                            FieldFinishPrompt(
+                                finishAction: {
+                                    isConfirmingFinish = true
+                                },
+                                dismissAction: {
+                                    hasDismissedCompletionPrompt = true
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -158,6 +192,90 @@ struct FieldView: View {
         .background(ArcSceneBackground())
         .navigationTitle("Field")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    isPresentingInfo = true
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .accessibilityLabel("Shoot info")
+
+                Button {
+                    isPresentingPlanEditor = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .accessibilityLabel("Edit plan")
+                .disabled(location.plan == nil)
+
+                Menu {
+                    Button {
+                        isPresentingEditLocation = true
+                    } label: {
+                        Label("Edit Location", systemImage: "slider.horizontal.3")
+                    }
+
+                    Button {
+                        isConfirmingFinish = true
+                    } label: {
+                        Label("Finish Shoot", systemImage: "checkmark.seal")
+                    }
+                    .disabled(!hasPlanItems)
+
+                    Button(role: .destructive) {
+                        isConfirmingDelete = true
+                    } label: {
+                        Label("Delete Shoot", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("More actions")
+            }
+        }
+        .sheet(isPresented: $isPresentingInfo) {
+            ShootInfoSheet(
+                location: location,
+                locationEnricher: locationEnricher,
+                referenceImageCache: referenceImageCache,
+                locationEditorServices: locationEditorServices
+            )
+        }
+        .sheet(isPresented: $isPresentingPlanEditor) {
+            PlanEditorSheet(
+                location: location,
+                aiService: aiService,
+                referenceImageCache: referenceImageCache
+            )
+        }
+        .sheet(isPresented: $isPresentingEditLocation) {
+            LocationEditorView(location: location, services: locationEditorServices) { draft in
+                location.name = draft.name
+                location.latitude = draft.coordinate.latitude
+                location.longitude = draft.coordinate.longitude
+            }
+        }
+        .confirmationDialog("Finish this shoot?", isPresented: $isConfirmingFinish, titleVisibility: .visible) {
+            Button("Finish Shoot") {
+                finishShoot()
+            }
+
+            Button("Cancel", role: .cancel) {
+            }
+        } message: {
+            Text("The shoot will move to Completed. You can reopen it later.")
+        }
+        .confirmationDialog("Delete this shoot?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("Delete Shoot", role: .destructive) {
+                deleteShoot()
+            }
+
+            Button("Cancel", role: .cancel) {
+            }
+        } message: {
+            Text("This removes the location, plan, and checklist.")
+        }
         .task(id: location.enrichmentJSON) {
             cacheStatus = referenceImageCache.cacheStatus(for: location)
         }
@@ -168,6 +286,7 @@ struct FieldView: View {
             item.isCaptured.toggle()
         }
 
+        hasDismissedCompletionPrompt = false
         saveChanges()
     }
 
@@ -186,7 +305,24 @@ struct FieldView: View {
             }
         }
 
+        hasDismissedCompletionPrompt = false
         saveChanges()
+    }
+
+    private func finishShoot() {
+        guard let plan else {
+            return
+        }
+
+        plan.completedAt = Date()
+        saveChanges()
+        dismiss()
+    }
+
+    private func deleteShoot() {
+        modelContext.delete(location)
+        saveChanges()
+        dismiss()
     }
 
     private func saveChanges() {
@@ -277,15 +413,61 @@ private struct FieldPlanRequiredCard: View {
     var body: some View {
         ArcFeatureCard(accent: ArcPalette.glowPrimary) {
             ArcFeatureTitle(
-                systemImage: "sparkles.rectangle.stack",
-                title: "No approved plan",
+                systemImage: "checklist",
+                title: "No active checklist",
                 subtitle: nil,
                 accent: ArcPalette.glowPrimary
             )
 
-            Text("Generate a draft, then tap Save Plan in planning before opening field mode.")
+            Text("Start a new shoot from the Shoots screen to generate and approve a field checklist.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct FieldFinishPrompt: View {
+    let finishAction: () -> Void
+    let dismissAction: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ArcFeatureTitle(
+                systemImage: "checkmark.seal.fill",
+                title: "All shots captured",
+                subtitle: "Finish this shoot to move it to Completed.",
+                accent: ArcPalette.tint
+            )
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    Button(action: finishAction) {
+                        Label("Finish Shoot", systemImage: "checkmark.seal")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FieldPrimaryButtonStyle())
+
+                    Button("Keep Open", action: dismissAction)
+                        .buttonStyle(FieldSecondaryButtonStyle())
+                }
+
+                VStack(spacing: 10) {
+                    Button(action: finishAction) {
+                        Label("Finish Shoot", systemImage: "checkmark.seal")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FieldPrimaryButtonStyle())
+
+                    Button("Keep Open", action: dismissAction)
+                        .buttonStyle(FieldSecondaryButtonStyle())
+                }
+            }
+        }
+        .padding(16)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.tint.opacity(0.45), lineWidth: 1)
         }
     }
 }
@@ -445,7 +627,7 @@ private struct FieldGuidanceRow: View {
     }
 }
 
-private struct FieldProgressBar: View {
+struct FieldProgressBar: View {
     let progress: Double
 
     var body: some View {

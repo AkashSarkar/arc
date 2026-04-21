@@ -29,9 +29,9 @@ struct LocationEditorView: View {
                 viewModel: viewModel,
                 systemImage: viewModel.isEditing ? "slider.horizontal.3" : "location.viewfinder",
                 title: viewModel.isEditing ? "Edit Shoot Spot" : "Choose Shoot Spot",
-                subtitle: "Search, use GPS, or drag the map until the pin sits on the exact place you will shoot.",
+                subtitle: "We start from your current GPS location when available. Search or drag the map until the pin sits on the exact place you will shoot.",
                 badges: [
-                    ArcHeroBadge(label: "GPS", systemImage: "location.fill"),
+                    ArcHeroBadge(label: "Auto GPS", systemImage: "location.fill"),
                     ArcHeroBadge(label: "Search", systemImage: "magnifyingglass"),
                     ArcHeroBadge(label: "Pin", systemImage: "mappin.circle")
                 ],

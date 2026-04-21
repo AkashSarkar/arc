@@ -37,52 +37,231 @@ enum ShotPlanParser {
     }
 
     private static func parseJSONResponse(_ response: String) -> [PlannedShotDraft]? {
-        guard let jsonData = extractJSONObjectData(from: response) else {
+        guard let jsonRoot = parseJSONRoot(from: response) else {
             return nil
         }
 
-        let decoder = JSONDecoder()
-        guard let payload = try? decoder.decode(ShotPlanPayload.self, from: jsonData) else {
-            return nil
+        if let shots = extractShotsArray(from: jsonRoot) {
+            let drafts = shots.compactMap(parseJSONShot)
+            return drafts.isEmpty ? nil : drafts
         }
 
-        return payload.shots.map { shot in
-            let title = normalizedTitle(from: shot.description)
-            let guidanceComponents = [
-                "Composition: \(shot.compositionNote)",
-                "Lens: \(shot.focalLengthMin)-\(shot.focalLengthMax)mm",
-                "Settings: \(shot.settingsHint)",
-                "Timing: \(shot.timeWindowLabel)",
-                "Why: \(shot.rationale)",
-            ]
-
-            return PlannedShotDraft(
-                title: title,
-                role: shot.role.capitalized,
-                guidance: guidanceComponents.joined(separator: " • ")
-            )
-        }
+        return nil
     }
 
-    private static func extractJSONObjectData(from response: String) -> Data? {
-        let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return nil
-        }
-
-        let normalized = trimmed
+    private static func parseJSONRoot(from response: String) -> Any? {
+        let normalized = response
+            .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "```json", with: "")
             .replacingOccurrences(of: "```", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let startIndex = normalized.firstIndex(of: "{"),
-              let endIndex = normalized.lastIndex(of: "}")
-        else {
+        guard !normalized.isEmpty else {
             return nil
         }
 
-        let jsonSubstring = normalized[startIndex...endIndex]
-        return String(jsonSubstring).data(using: .utf8)
+        if let directObject = parseJSONObject(from: normalized) {
+            return unwrapJSONContainer(directObject)
+        }
+
+        if let start = normalized.firstIndex(of: "{"),
+           let end = normalized.lastIndex(of: "}") {
+            let objectSlice = String(normalized[start...end])
+            if let slicedObject = parseJSONObject(from: objectSlice) {
+                return unwrapJSONContainer(slicedObject)
+            }
+        }
+
+        if let start = normalized.firstIndex(of: "["),
+           let end = normalized.lastIndex(of: "]") {
+            let arraySlice = String(normalized[start...end])
+            if let slicedArray = parseJSONObject(from: arraySlice) {
+                return unwrapJSONContainer(slicedArray)
+            }
+        }
+
+        return nil
+    }
+
+    private static func parseJSONObject(from string: String) -> Any? {
+        guard let data = string.data(using: .utf8) else {
+            return nil
+        }
+
+        return try? JSONSerialization.jsonObject(with: data)
+    }
+
+    private static func unwrapJSONContainer(_ object: Any) -> Any {
+        if let dictionary = object as? [String: Any] {
+            if let shots = dictionary["shots"] {
+                return ["shots": shots]
+            }
+
+            for key in ["data", "response", "content", "result", "output", "message", "choices"] {
+                if let nested = dictionary[key] {
+                    return unwrapJSONContainer(nested)
+                }
+            }
+
+            return dictionary
+        }
+
+        if let string = object as? String,
+           let nestedObject = parseJSONObject(from: string.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return unwrapJSONContainer(nestedObject)
+        }
+
+        return object
+    }
+
+    private static func extractShotsArray(from root: Any) -> [Any]? {
+        if let dictionary = root as? [String: Any] {
+            if let shots = dictionary["shots"] as? [Any] {
+                return shots
+            }
+
+            if let plan = dictionary["plan"] as? [String: Any],
+               let shots = plan["shots"] as? [Any] {
+                return shots
+            }
+
+            if let items = dictionary["items"] as? [Any] {
+                return items
+            }
+
+            if let drafts = dictionary["drafts"] as? [Any] {
+                return drafts
+            }
+
+            return nil
+        }
+
+        if let array = root as? [Any] {
+            return array
+        }
+
+        return nil
+    }
+
+    private static func parseJSONShot(_ rawValue: Any) -> PlannedShotDraft? {
+        if let dictionary = rawValue as? [String: Any] {
+            if let nestedShot = dictionary["shot"] as? [String: Any] {
+                return parseJSONShot(nestedShot)
+            }
+
+            let titleOrDescription = firstNonEmptyString(
+                dictionary["title"],
+                dictionary["name"],
+                dictionary["description"],
+                dictionary["shot_description"]
+            )
+
+            let role = firstNonEmptyString(
+                dictionary["role"],
+                dictionary["narrative_role"],
+                dictionary["type"]
+            ) ?? "Support"
+
+            let composition = firstNonEmptyString(dictionary["composition_note"], dictionary["compositionNote"]) ?? ""
+            let settings = firstNonEmptyString(dictionary["settings_hint"], dictionary["settingsHint"]) ?? ""
+            let timing = firstNonEmptyString(dictionary["time_window_label"], dictionary["timeWindowLabel"], dictionary["time_of_day"]) ?? ""
+            let rationale = firstNonEmptyString(dictionary["rationale"], dictionary["why"]) ?? ""
+            let directGuidance = firstNonEmptyString(
+                dictionary["guidance"],
+                dictionary["practical_guidance"],
+                dictionary["instructions"],
+                dictionary["notes"],
+                dictionary["note"]
+            ) ?? ""
+            let focalMin = firstIntValue(dictionary["focal_length_min"], dictionary["focalLengthMin"])
+            let focalMax = firstIntValue(dictionary["focal_length_max"], dictionary["focalLengthMax"])
+
+            let title = normalizedTitle(from: titleOrDescription ?? "")
+
+            var guidanceComponents: [String] = []
+            if !composition.isEmpty {
+                guidanceComponents.append("Composition: \(composition)")
+            }
+
+            if let focalMin, let focalMax {
+                guidanceComponents.append("Lens: \(focalMin)-\(focalMax)mm")
+            } else if let focalMin {
+                guidanceComponents.append("Lens: \(focalMin)mm+")
+            } else if let focalMax {
+                guidanceComponents.append("Lens: up to \(focalMax)mm")
+            }
+
+            if !settings.isEmpty {
+                guidanceComponents.append("Settings: \(settings)")
+            }
+
+            if !timing.isEmpty {
+                guidanceComponents.append("Timing: \(timing)")
+            }
+
+            if !rationale.isEmpty {
+                guidanceComponents.append("Why: \(rationale)")
+            }
+
+            if guidanceComponents.isEmpty, !directGuidance.isEmpty {
+                guidanceComponents.append(directGuidance)
+            }
+
+            if guidanceComponents.isEmpty, let titleOrDescription, !titleOrDescription.isEmpty {
+                guidanceComponents.append(titleOrDescription)
+            }
+
+            let guidance = guidanceComponents.joined(separator: " • ")
+            guard !title.isEmpty, !guidance.isEmpty else {
+                return nil
+            }
+
+            return PlannedShotDraft(
+                title: title,
+                role: role.capitalized,
+                guidance: guidance
+            )
+        }
+
+        if let line = rawValue as? String {
+            return parseLine(cleanedLine(line))
+        }
+
+        return nil
+    }
+
+    private static func firstNonEmptyString(_ values: Any?...) -> String? {
+        for value in values {
+            if let string = value as? String {
+                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private static func firstIntValue(_ values: Any?...) -> Int? {
+        for value in values {
+            if let intValue = value as? Int {
+                return intValue
+            }
+
+            if let doubleValue = value as? Double {
+                return Int(doubleValue.rounded())
+            }
+
+            if let stringValue = value as? String {
+                let digitsOnly = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let parsedValue = Int(digitsOnly) {
+                    return parsedValue
+                }
+            }
+        }
+
+        return nil
     }
 
     private static func normalizedTitle(from description: String) -> String {
@@ -239,33 +418,5 @@ enum ShotPlanParser {
         }
 
         return "Support"
-    }
-}
-
-private struct ShotPlanPayload: Decodable {
-    let shots: [ShotPlanJSONShot]
-}
-
-private struct ShotPlanJSONShot: Decodable {
-    let sequence: Int
-    let role: String
-    let description: String
-    let compositionNote: String
-    let focalLengthMin: Int
-    let focalLengthMax: Int
-    let settingsHint: String
-    let timeWindowLabel: String
-    let rationale: String
-
-    enum CodingKeys: String, CodingKey {
-        case sequence
-        case role
-        case description
-        case compositionNote = "composition_note"
-        case focalLengthMin = "focal_length_min"
-        case focalLengthMax = "focal_length_max"
-        case settingsHint = "settings_hint"
-        case timeWindowLabel = "time_window_label"
-        case rationale
     }
 }

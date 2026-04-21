@@ -48,13 +48,14 @@ struct ShotListGenerator: ShotListGenerating {
         var promptSections = [
             "You are a cinematographer and photo director planning a shoot.",
             "Generate a \(input.outputIntent.defaultShotCount)-shot list optimized for a \(input.outputIntent.promptLabel).",
-            "Return only valid JSON matching this schema:",
-            "{\"shots\":[{\"sequence\":1,\"role\":\"establishing|detail|subject|transition|hero|closer\",\"description\":\"...\",\"composition_note\":\"...\",\"focal_length_min\":24,\"focal_length_max\":35,\"settings_hint\":\"...\",\"time_window_label\":\"...\",\"rationale\":\"...\"}]}",
-            "Do not include markdown, prose, or keys outside this schema.",
+            "Return exactly \(input.outputIntent.defaultShotCount) lines in this exact format:",
+            "<short shot title> | <role: establishing/detail/subject/transition/hero/closer> | <practical guidance with composition, focal range, settings hint, timing, and rationale>",
+            "Do not return JSON.",
+            "Do not return markdown.",
+            "Do not include headings or intro/outro text.",
             "Location: \(location.name) at \(locationCoordinates).",
             "Shoot window: \(shootWindowText).",
-            "Each shot must be specific to this location and include practical field guidance.",
-            "Generate exactly \(input.outputIntent.defaultShotCount) shots."
+            "Each shot must be specific to this location and include practical field guidance."
         ]
 
         if let cachedContextSummary {

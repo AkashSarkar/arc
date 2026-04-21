@@ -13,18 +13,13 @@ struct ShootSpotPickerView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                ArcHeroHeader(
-                    systemImage: systemImage,
-                    title: title,
-                    subtitle: subtitle,
-                    badges: badges
-                )
+            VStack(alignment: .leading, spacing: 12) {
+                compactHeroHeader
 
                 mapCard
                 confirmationCard
             }
-            .padding(20)
+            .padding(16)
             .padding(.bottom, 112)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -35,6 +30,40 @@ struct ShootSpotPickerView: View {
         .task {
             await viewModel.loadDefaultLocationIfNeeded()
         }
+    }
+
+    private var compactHeroHeader: some View {
+        HStack(spacing: 12) {
+            ArcMiniIconBadge(systemImage: systemImage, tint: ArcPalette.tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                if !compactHeroSummary.isEmpty {
+                    Text(compactHeroSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(ArcPalette.surfaceFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .glassEffect(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+
+    private var compactHeroSummary: String {
+        badges.map(\.label).joined(separator: " • ")
     }
 
     private var mapCard: some View {

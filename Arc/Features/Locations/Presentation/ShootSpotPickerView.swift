@@ -21,7 +21,6 @@ struct ShootSpotPickerView: View {
                     badges: badges
                 )
 
-                searchCard
                 mapCard
                 confirmationCard
             }
@@ -38,112 +37,16 @@ struct ShootSpotPickerView: View {
         }
     }
 
-    private var searchCard: some View {
-        ArcFeatureCard(accent: ArcPalette.glowSecondary) {
-            ArcFeatureTitle(
-                systemImage: "magnifyingglass",
-                title: "Find the spot",
-                subtitle: "Search by place name, use GPS, or drag the map pin."
-            )
-
-            HStack(alignment: .center, spacing: 10) {
-                editorTextField("Search place or address", text: $viewModel.searchQuery)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                    .onSubmit {
-                        Task {
-                            await viewModel.searchUsingQuery()
-                        }
-                    }
-
-                Button {
-                    Task {
-                        await viewModel.useCurrentLocation()
-                    }
-                } label: {
-                    Image(systemName: viewModel.isResolvingCurrentLocation ? "location.circle" : "location.fill")
-                        .frame(width: 42, height: 42)
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(viewModel.isResolvingCurrentLocation)
-                .accessibilityLabel("Use current location")
-
-                Button {
-                    Task {
-                        await viewModel.searchUsingQuery()
-                    }
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .frame(width: 42, height: 42)
-                }
-                .buttonStyle(.glass)
-                .disabled(
-                    viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                    viewModel.isResolvingSearchResult
-                )
-                .accessibilityLabel("Search")
-            }
-
-            if viewModel.isResolvingCurrentLocation {
-                ProgressView("Finding current location...")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if viewModel.isResolvingSearchResult {
-                ProgressView("Searching...")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if !viewModel.suggestions.isEmpty {
-                VStack(spacing: 10) {
-                    ForEach(viewModel.suggestions) { suggestion in
-                        Button {
-                            Task {
-                                await viewModel.resolveSuggestion(suggestion)
-                            }
-                        } label: {
-                            HStack(alignment: .top, spacing: 12) {
-                                ArcMiniIconBadge(systemImage: "mappin.and.ellipse", tint: ArcPalette.glowSecondary)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(suggestion.title)
-                                        .foregroundStyle(.primary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                                    if !suggestion.subtitle.isEmpty {
-                                        Text(suggestion.subtitle)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                            .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-    }
-
     private var mapCard: some View {
         ArcFeatureCard(accent: ArcPalette.glowPrimary) {
             ArcFeatureTitle(
-                systemImage: "map",
-                title: "Set the pin",
-                subtitle: "Move the map until the pin sits on the exact shooting position.",
+                systemImage: "magnifyingglass",
+                title: "Find the spot",
+                subtitle: "Search, use GPS, or drag the map until the pin is exactly where you will shoot.",
                 accent: ArcPalette.glowPrimary
             )
 
-            ZStack(alignment: .topLeading) {
+            ZStack(alignment: .top) {
                 LocationMapPicker(
                     selectedCoordinate: viewModel.selectedCoordinate,
                     mapFocusCoordinate: viewModel.mapFocusCoordinate,
@@ -153,16 +56,131 @@ struct ShootSpotPickerView: View {
                     }
                 )
 
-                if viewModel.isReverseGeocoding {
-                    Label("Updating name", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
-                        .padding(12)
+                VStack(spacing: 10) {
+                    mapSearchPanel
+
+                    if let statusText = mapStatusText {
+                        Label(statusText, systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.regularMaterial, in: Capsule())
+                    }
+
+                    if !viewModel.suggestions.isEmpty {
+                        mapSuggestionsPanel
+                    }
+
+                    Spacer(minLength: 0)
                 }
+                .padding(12)
             }
         }
+    }
+
+    private var mapSearchPanel: some View {
+        HStack(alignment: .center, spacing: 8) {
+            TextField("Search place or address", text: $viewModel.searchQuery)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                }
+                .onSubmit {
+                    Task {
+                        await viewModel.searchUsingQuery()
+                    }
+                }
+
+            Button {
+                Task {
+                    await viewModel.useCurrentLocation()
+                }
+            } label: {
+                Image(systemName: viewModel.isResolvingCurrentLocation ? "location.circle" : "location.fill")
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(viewModel.isResolvingCurrentLocation)
+            .accessibilityLabel("Use current location")
+
+            Button {
+                Task {
+                    await viewModel.searchUsingQuery()
+                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(.glass)
+            .disabled(
+                viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                viewModel.isResolvingSearchResult
+            )
+            .accessibilityLabel("Search")
+        }
+    }
+
+    private var mapSuggestionsPanel: some View {
+        VStack(spacing: 8) {
+            ForEach(Array(viewModel.suggestions.prefix(4))) { suggestion in
+                Button {
+                    Task {
+                        await viewModel.resolveSuggestion(suggestion)
+                    }
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(ArcPalette.glowSecondary)
+                            .frame(width: 28, height: 28)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(suggestion.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            if !suggestion.subtitle.isEmpty {
+                                Text(suggestion.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var mapStatusText: String? {
+        if viewModel.isResolvingCurrentLocation {
+            return "Finding current location"
+        }
+
+        if viewModel.isResolvingSearchResult {
+            return "Searching"
+        }
+
+        if viewModel.isReverseGeocoding {
+            return "Updating name"
+        }
+
+        return nil
     }
 
     private var confirmationCard: some View {

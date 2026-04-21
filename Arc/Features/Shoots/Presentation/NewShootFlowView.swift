@@ -24,6 +24,7 @@ struct NewShootFlowView: View {
     @State private var generatedLastEnrichedAt: Date?
     @State private var draftItems: [ShootDraftItem] = []
     @State private var errorMessage: String?
+    @State private var isFetchingContext = false
     @State private var isGenerating = false
     @State private var isCommitting = false
     @State private var editingDraft: ShootDraftItem?
@@ -66,13 +67,13 @@ struct NewShootFlowView: View {
             }
             .navigationTitle("New Shoot")
             .navigationBarTitleDisplayMode(.inline)
-            .interactiveDismissDisabled(isGenerating || isCommitting)
+            .interactiveDismissDisabled(isFetchingContext || isGenerating || isCommitting)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .disabled(isGenerating || isCommitting)
+                    .disabled(isFetchingContext || isGenerating || isCommitting)
                 }
             }
             .sheet(item: $editingDraft) { _ in
@@ -112,6 +113,10 @@ struct NewShootFlowView: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(ArcSceneBackground())
+        .onChange(of: shootWindowMode) { _, _ in clearFetchedContext() }
+        .onChange(of: shootDate) { _, _ in clearFetchedContext() }
+        .onChange(of: shootStartTime) { _, _ in clearFetchedContext() }
+        .onChange(of: shootEndTime) { _, _ in clearFetchedContext() }
     }
 
     private var locationStepScreen: some View {
@@ -164,6 +169,8 @@ struct NewShootFlowView: View {
                     shootEndTime: $shootEndTime
                 )
 
+                framingContextControl
+
                 wizardButtons(
                     backTitle: "Back",
                     primaryTitle: "Next",
@@ -175,6 +182,66 @@ struct NewShootFlowView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         }
+    }
+
+    private var framingContextControl: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: hasFetchedContext ? "checkmark.circle.fill" : "map.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(hasFetchedContext ? ArcPalette.tint : ArcPalette.glowPrimary)
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(hasFetchedContext ? "Context ready" : "Location context")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(contextSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button {
+                Task {
+                    await fetchContextForDraft()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if isFetchingContext {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Text(isFetchingContext ? "Fetching..." : (hasFetchedContext ? "Refresh Context" : "Fetch Context"))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.glass)
+            .disabled(isFetchingContext || isGenerating || isCommitting)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+
+    private var hasFetchedContext: Bool {
+        !generatedEnrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var contextSummary: String {
+        if let generatedLastEnrichedAt, hasFetchedContext {
+            return "Cached \(generatedLastEnrichedAt.formatted(date: .abbreviated, time: .shortened)). Generation will use landmarks, weather, references, and sun/moon timing."
+        }
+
+        return "Fetch landmarks, weather, references, and sun/moon timing before generating."
     }
 
     private var notesStep: some View {
@@ -346,21 +413,21 @@ struct NewShootFlowView: View {
             HStack(spacing: 10) {
                 Button(backTitle, action: backAction)
                     .buttonStyle(.glass)
-                    .disabled(isGenerating || isCommitting)
+                    .disabled(isFetchingContext || isGenerating || isCommitting)
 
                 Button(primaryTitle, action: primaryAction)
                     .buttonStyle(.glassProminent)
-                    .disabled(isGenerating || isCommitting)
+                    .disabled(isFetchingContext || isGenerating || isCommitting)
             }
 
             VStack(spacing: 10) {
                 Button(primaryTitle, action: primaryAction)
                     .buttonStyle(.glassProminent)
-                    .disabled(isGenerating || isCommitting)
+                    .disabled(isFetchingContext || isGenerating || isCommitting)
 
                 Button(backTitle, action: backAction)
                     .buttonStyle(.glass)
-                    .disabled(isGenerating || isCommitting)
+                    .disabled(isFetchingContext || isGenerating || isCommitting)
             }
         }
     }
@@ -371,8 +438,48 @@ struct NewShootFlowView: View {
         }
 
         locationDraft = draft
+        clearFetchedContext()
         errorMessage = nil
         step = .framing
+    }
+
+    private func clearFetchedContext() {
+        generatedEnrichmentJSON = ""
+        generatedLastEnrichedAt = nil
+    }
+
+    private func fetchContextForDraft() async {
+        guard !isFetchingContext else {
+            return
+        }
+
+        guard let locationDraft = locationDraft ?? locationViewModel.validatedDraft(),
+              let input = generationInput()
+        else {
+            return
+        }
+
+        self.locationDraft = locationDraft
+        isFetchingContext = true
+        errorMessage = nil
+        defer { isFetchingContext = false }
+
+        let transientLocation = ShootLocation(
+            name: locationDraft.name,
+            latitude: locationDraft.coordinate.latitude,
+            longitude: locationDraft.coordinate.longitude
+        )
+        let contextBundle = await locationEnricher.enrich(
+            location: transientLocation,
+            shootWindow: DateInterval(start: input.shootWindowStart, end: input.shootWindowEnd)
+        )
+
+        do {
+            generatedEnrichmentJSON = try contextBundle.formattedJSONString()
+            generatedLastEnrichedAt = contextBundle.generatedAt
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func generateDraft() async {
@@ -396,15 +503,20 @@ struct NewShootFlowView: View {
         )
 
         do {
-            let contextBundle = await locationEnricher.enrich(
-                location: transientLocation,
-                shootWindow: DateInterval(start: input.shootWindowStart, end: input.shootWindowEnd)
-            )
-            if let formattedContext = try? contextBundle.formattedJSONString() {
-                transientLocation.enrichmentJSON = formattedContext
-                transientLocation.lastEnrichedAt = contextBundle.generatedAt
-                generatedEnrichmentJSON = formattedContext
-                generatedLastEnrichedAt = contextBundle.generatedAt
+            if hasFetchedContext {
+                transientLocation.enrichmentJSON = generatedEnrichmentJSON
+                transientLocation.lastEnrichedAt = generatedLastEnrichedAt
+            } else {
+                let contextBundle = await locationEnricher.enrich(
+                    location: transientLocation,
+                    shootWindow: DateInterval(start: input.shootWindowStart, end: input.shootWindowEnd)
+                )
+                if let formattedContext = try? contextBundle.formattedJSONString() {
+                    transientLocation.enrichmentJSON = formattedContext
+                    transientLocation.lastEnrichedAt = contextBundle.generatedAt
+                    generatedEnrichmentJSON = formattedContext
+                    generatedLastEnrichedAt = contextBundle.generatedAt
+                }
             }
 
             let result = try await generator.generate(for: transientLocation, input: input)

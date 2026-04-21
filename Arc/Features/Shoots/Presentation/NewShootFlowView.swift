@@ -84,13 +84,12 @@ struct NewShootFlowView: View {
     private var wizardForm: some View {
         Form {
             Section {
-                ArcHeroHeader(
+                ArcCompactHeroHeader(
                     systemImage: step.systemImage,
                     title: step.title,
-                    subtitle: step.subtitle,
-                    badges: [ArcHeroBadge(label: "\(step.rawValue + 1) of \(NewShootStep.allCases.count)", systemImage: "list.number")]
+                    summary: stepProgressSummary
                 )
-                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
@@ -120,12 +119,16 @@ struct NewShootFlowView: View {
             viewModel: locationViewModel,
             systemImage: step.systemImage,
             title: step.title,
-            subtitle: "Search, use GPS, or drag the map until the pin sits on the exact place you will shoot.",
+            subtitle: step.subtitle,
             badges: [ArcHeroBadge(label: "\(step.rawValue + 1) of \(NewShootStep.allCases.count)", systemImage: "list.number")],
             primaryButtonTitle: "Continue",
             primarySystemImage: "arrow.right",
             primaryAction: continueFromLocation
         )
+    }
+
+    private var stepProgressSummary: String {
+        "\(step.rawValue + 1) of \(NewShootStep.allCases.count)"
     }
 
     @ViewBuilder

@@ -200,6 +200,45 @@ struct ArcHeroHeader<Content: View>: View {
     }
 }
 
+struct ArcCompactHeroHeader: View {
+    let systemImage: String
+    let title: String
+    let summary: String?
+    var tint: Color = ArcPalette.tint
+
+    private let cardShape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ArcMiniIconBadge(systemImage: systemImage, tint: tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                if let summary, !summary.isEmpty {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(ArcPalette.surfaceFill, in: cardShape)
+        .glassEffect(in: cardShape)
+        .overlay {
+            cardShape
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
 struct ArcFeatureCard<Content: View>: View {
     let accent: Color
     @ViewBuilder let content: Content

@@ -12,6 +12,7 @@ final class PlanViewModel {
     var response: String = ""
     var errorMessage: String?
     var isLoading: Bool = false
+    var isDraftApproved: Bool = false
     var shootWindowMode: ShootWindowMode = .now
     var outputIntent: OutputIntent = .instagramCarousel
     var shootDate: Date = Date()
@@ -41,6 +42,7 @@ final class PlanViewModel {
         shootDate = existingPlan.shootDate
         shootStartTime = existingPlan.shootStartTime
         shootEndTime = existingPlan.shootEndTime
+        isDraftApproved = existingPlan.isApprovedForField
     }
 
     var shootWindowSummary: String {
@@ -78,8 +80,27 @@ final class PlanViewModel {
 
             try modelContext.save()
             response = ShotPlanParser.formattedResponse(from: generationResult.drafts, fallback: generationResult.rawResponse)
+            isDraftApproved = false
         } catch {
             response = ""
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func approveDraft(for location: ShootLocation, modelContext: ModelContext) {
+        guard let plan = location.plan, !plan.items.isEmpty else {
+            errorMessage = "Generate a draft before saving."
+            return
+        }
+
+        plan.isApprovedForField = true
+        plan.approvedAt = Date()
+        isDraftApproved = true
+        errorMessage = nil
+
+        do {
+            try modelContext.save()
+        } catch {
             errorMessage = error.localizedDescription
         }
     }
@@ -162,6 +183,8 @@ final class PlanViewModel {
         plan.shootDate = shootDate
         plan.shootStartTime = shootStartTime
         plan.shootEndTime = shootEndTime
+        plan.isApprovedForField = false
+        plan.approvedAt = nil
 
         for existingItem in Array(plan.items) {
             modelContext.delete(existingItem)

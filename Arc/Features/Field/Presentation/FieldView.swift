@@ -7,7 +7,11 @@ struct FieldView: View {
     @Environment(\.modelContext) private var modelContext
 
     private var plan: ShootPlan? {
-        location.plan
+        guard let existingPlan = location.plan, existingPlan.isApprovedForField else {
+            return nil
+        }
+
+        return existingPlan
     }
 
     private var planItems: [ShootPlanItem] {
@@ -252,12 +256,12 @@ private struct FieldPlanRequiredCard: View {
         ArcFeatureCard(accent: ArcPalette.glowPrimary) {
             ArcFeatureTitle(
                 systemImage: "sparkles.rectangle.stack",
-                title: "No saved plan",
+                title: "No approved plan",
                 subtitle: nil,
                 accent: ArcPalette.glowPrimary
             )
 
-            Text("Generate a plan for this location first so field mode can reuse the same shot list.")
+            Text("Generate a draft, then tap Save Plan in planning before opening field mode.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

@@ -10,6 +10,10 @@ struct PlanView: View {
     @State private var navigationTarget: PlanNavigationTarget?
     @State private var isRefreshingContext = false
     @State private var contextRefreshError: String?
+    @State private var editingItem: ShootPlanItem?
+    @State private var editTitle: String = ""
+    @State private var editRole: String = ""
+    @State private var editGuidance: String = ""
 
     init(location: ShootLocation, aiService: any AIServicing, locationEnricher: any LocationEnriching) {
         self.location = location
@@ -147,22 +151,46 @@ struct PlanView: View {
                         ArcFeatureTitle(
                             systemImage: "text.alignleft",
                             title: "Draft Plan",
-                            subtitle: "Saved for field and review."
+                            subtitle: viewModel.isDraftApproved ? "Saved for field and review." : "Review and save for field."
                         )
 
                         Text(savedPlanSummary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Text("To edit this plan, change the notes, output, or timing above and generate again. The saved checklist updates in place.")
+                        Text("To edit this plan, change the notes, output, or timing above and generate again.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
 
-                        Text(viewModel.response)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
+                        if !draftItems.isEmpty {
+                            VStack(spacing: 10) {
+                                ForEach(draftItems) { item in
+                                    PlanDraftItemRow(
+                                        item: item,
+                                        onEdit: { beginEditing(item) },
+                                        onDelete: { deleteDraftItem(item) }
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(viewModel.response)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
 
                         HStack(spacing: 10) {
+                            Button {
+                                viewModel.approveDraft(for: location, modelContext: modelContext)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: viewModel.isDraftApproved ? "checkmark.seal.fill" : "square.and.arrow.down")
+                                    Text(viewModel.isDraftApproved ? "Saved for Field" : "Save Plan")
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glassProminent)
+                            .disabled(viewModel.isDraftApproved || viewModel.isLoading || draftItems.isEmpty)
+
                             Button {
                                 navigationTarget = .field
                             } label: {
@@ -172,7 +200,7 @@ struct PlanView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(.glass)
 
                             Button {
                                 navigationTarget = .review
@@ -210,6 +238,33 @@ struct PlanView: View {
                 LocationContextView(location: location, locationEnricher: locationEnricher)
             }
         }
+        .sheet(item: $editingItem) { _ in
+            NavigationStack {
+                Form {
+                    Section("Shot") {
+                        TextField("Title", text: $editTitle)
+                        TextField("Role", text: $editRole)
+                        TextField("Guidance", text: $editGuidance, axis: .vertical)
+                            .lineLimit(4, reservesSpace: true)
+                    }
+                }
+                .navigationTitle("Edit Shot")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") {
+                            editingItem = nil
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Save") {
+                            saveDraftEdits()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private var planSummary: String {
@@ -221,15 +276,23 @@ struct PlanView: View {
     }
 
     private var savedPlanSummary: String {
-        guard let createdAt = location.plan?.createdAt else {
-            return "This draft is saved automatically when generation succeeds."
+        if let approvedAt = location.plan?.approvedAt, viewModel.isDraftApproved {
+            return "Saved for field on \(approvedAt.formatted(date: .abbreviated, time: .shortened))."
         }
 
-        return "Saved automatically on \(createdAt.formatted(date: .abbreviated, time: .shortened))."
+        guard location.plan?.createdAt != nil else {
+            return "Generate a draft first."
+        }
+
+        return "Draft generated. Save to make it available in field mode."
     }
 
     private var hasCachedContext: Bool {
         !location.enrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var draftItems: [ShootPlanItem] {
+        location.plan?.orderedItems ?? []
     }
 
     private func refreshContext() async {
@@ -246,6 +309,100 @@ struct PlanView: View {
             try modelContext.save()
         } catch {
             contextRefreshError = error.localizedDescription
+        }
+    }
+
+    private func beginEditing(_ item: ShootPlanItem) {
+        editTitle = item.title
+        editRole = item.role
+        editGuidance = item.guidance
+        editingItem = item
+    }
+
+    private func saveDraftEdits() {
+        guard let currentItem = editingItem else {
+            return
+        }
+
+        let cleanTitle = editTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanRole = editRole.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanGuidance = editGuidance.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleanTitle.isEmpty, !cleanGuidance.isEmpty else {
+            return
+        }
+
+        currentItem.title = cleanTitle
+        currentItem.role = cleanRole.isEmpty ? "Support" : cleanRole
+        currentItem.guidance = cleanGuidance
+        markDraftNeedsResave()
+        editingItem = nil
+    }
+
+    private func deleteDraftItem(_ item: ShootPlanItem) {
+        guard let plan = location.plan else {
+            return
+        }
+
+        let remainingItems = plan.orderedItems.filter { $0.id != item.id }
+        for (index, remainingItem) in remainingItems.enumerated() {
+            remainingItem.orderIndex = index
+        }
+
+        plan.items.removeAll { $0.id == item.id }
+        modelContext.delete(item)
+        markDraftNeedsResave()
+    }
+
+    private func markDraftNeedsResave() {
+        guard let plan = location.plan else {
+            return
+        }
+
+        plan.isApprovedForField = false
+        plan.approvedAt = nil
+        viewModel.isDraftApproved = false
+        try? modelContext.save()
+    }
+}
+
+private struct PlanDraftItemRow: View {
+    let item: ShootPlanItem
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(item.title)
+                    .font(.headline)
+                Spacer(minLength: 0)
+                Text(item.role)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(ArcPalette.tint.opacity(0.14), in: Capsule())
+                    .foregroundStyle(ArcPalette.tint)
+            }
+
+            Text(item.guidance)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button("Edit", action: onEdit)
+                    .buttonStyle(.glass)
+                Button("Delete", role: .destructive, action: onDelete)
+                    .buttonStyle(.glass)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }

@@ -196,40 +196,18 @@ struct PlanView: View {
                                 .textSelection(.enabled)
                         }
 
-                        HStack(spacing: 10) {
-                            Button {
-                                viewModel.approveDraft(for: location, modelContext: modelContext)
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: viewModel.isDraftApproved ? "checkmark.seal.fill" : "square.and.arrow.down")
-                                    Text(viewModel.isDraftApproved ? "Saved for Field" : "Save Plan")
-                                }
-                                .frame(maxWidth: .infinity)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) {
+                                planSaveButton
+                                planOpenFieldButton
+                                planOpenReviewButton
                             }
-                            .buttonStyle(.glassProminent)
-                            .disabled(viewModel.isDraftApproved || viewModel.isLoading || draftItems.isEmpty)
 
-                            Button {
-                                navigationTarget = .field
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checklist")
-                                    Text("Open Field")
-                                }
-                                .frame(maxWidth: .infinity)
+                            VStack(spacing: 10) {
+                                planSaveButton
+                                planOpenFieldButton
+                                planOpenReviewButton
                             }
-                            .buttonStyle(.glass)
-
-                            Button {
-                                navigationTarget = .review
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "photo.on.rectangle")
-                                    Text("Open Review")
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.glass)
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -306,6 +284,55 @@ struct PlanView: View {
         }
 
         return "Draft generated. Save to make it available in field mode."
+    }
+
+    @ViewBuilder
+    private var planSaveButton: some View {
+        Button {
+            viewModel.approveDraft(for: location, modelContext: modelContext)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: viewModel.isDraftApproved ? "checkmark.seal.fill" : "square.and.arrow.down")
+                Text(viewModel.isDraftApproved ? "Saved for Field" : "Save Plan")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(viewModel.isDraftApproved || viewModel.isLoading || draftItems.isEmpty)
+    }
+
+    @ViewBuilder
+    private var planOpenFieldButton: some View {
+        Button {
+            navigationTarget = .field
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "checklist")
+                Text("Open Field")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
+    }
+
+    @ViewBuilder
+    private var planOpenReviewButton: some View {
+        Button {
+            navigationTarget = .review
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "photo.on.rectangle")
+                Text("Open Review")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
     }
 
     private var hasCachedContext: Bool {

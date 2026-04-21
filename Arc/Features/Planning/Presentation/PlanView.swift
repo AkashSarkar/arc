@@ -4,6 +4,7 @@ import SwiftUI
 struct PlanView: View {
     let location: ShootLocation
     let locationEnricher: any LocationEnriching
+    let referenceImageCache: any ReferenceImageCaching
 
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: PlanViewModel
@@ -15,10 +16,22 @@ struct PlanView: View {
     @State private var editRole: String = ""
     @State private var editGuidance: String = ""
 
-    init(location: ShootLocation, aiService: any AIServicing, locationEnricher: any LocationEnriching) {
+    init(
+        location: ShootLocation,
+        aiService: any AIServicing,
+        locationEnricher: any LocationEnriching,
+        referenceImageCache: any ReferenceImageCaching
+    ) {
         self.location = location
         self.locationEnricher = locationEnricher
-        _viewModel = State(initialValue: PlanViewModel(aiService: aiService, existingPlan: location.plan))
+        self.referenceImageCache = referenceImageCache
+        _viewModel = State(
+            initialValue: PlanViewModel(
+                aiService: aiService,
+                existingPlan: location.plan,
+                referenceImageCache: referenceImageCache
+            )
+        )
     }
 
     var body: some View {

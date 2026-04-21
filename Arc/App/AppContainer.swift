@@ -5,6 +5,7 @@ struct AppContainer {
     let makeAIService: (LLMProfile?) -> any AIServicing
     let apiKeyStore: any APIKeyProviding
     let locationEnricher: any LocationEnriching
+    let referenceImageCache: any ReferenceImageCaching
     let locationEditorServices: LocationEditorServiceFactory
 
     static let live: AppContainer = {
@@ -35,6 +36,7 @@ struct AppContainer {
             },
             apiKeyStore: keychainStore,
             locationEnricher: locationEnricher,
+            referenceImageCache: DiskReferenceImageCache(),
             locationEditorServices: .live
         )
     }()

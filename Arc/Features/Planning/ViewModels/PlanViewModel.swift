@@ -6,6 +6,7 @@ import SwiftData
 @Observable
 final class PlanViewModel {
     private let shotListGenerator: any ShotListGenerating
+    private let referenceImageCache: any ReferenceImageCaching
     private let calendar = Calendar.current
 
     var notes: String = ""
@@ -22,9 +23,11 @@ final class PlanViewModel {
     init(
         aiService: any AIServicing,
         existingPlan: ShootPlan? = nil,
-        shotListGenerator: (any ShotListGenerating)? = nil
+        shotListGenerator: (any ShotListGenerating)? = nil,
+        referenceImageCache: any ReferenceImageCaching = DiskReferenceImageCache()
     ) {
         self.shotListGenerator = shotListGenerator ?? ShotListGenerator(aiService: aiService)
+        self.referenceImageCache = referenceImageCache
 
         guard let existingPlan else {
             return
@@ -79,7 +82,13 @@ final class PlanViewModel {
             )
 
             try modelContext.save()
+            let cacheResult = await referenceImageCache.cacheReferenceImages(for: location)
             response = ShotPlanParser.formattedResponse(from: generationResult.drafts, fallback: generationResult.rawResponse)
+
+            if cacheResult.totalImages > 0, cacheResult.cachedImages == 0 {
+                errorMessage = "Plan generated, but reference image caching failed. You may need connectivity for image previews."
+            }
+
             isDraftApproved = false
         } catch {
             response = ""

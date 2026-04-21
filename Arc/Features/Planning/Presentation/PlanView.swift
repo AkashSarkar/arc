@@ -4,17 +4,34 @@ import SwiftUI
 struct PlanView: View {
     let location: ShootLocation
     let locationEnricher: any LocationEnriching
+    let referenceImageCache: any ReferenceImageCaching
 
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: PlanViewModel
     @State private var navigationTarget: PlanNavigationTarget?
     @State private var isRefreshingContext = false
     @State private var contextRefreshError: String?
+    @State private var editingItem: ShootPlanItem?
+    @State private var editTitle: String = ""
+    @State private var editRole: String = ""
+    @State private var editGuidance: String = ""
 
-    init(location: ShootLocation, aiService: any AIServicing, locationEnricher: any LocationEnriching) {
+    init(
+        location: ShootLocation,
+        aiService: any AIServicing,
+        locationEnricher: any LocationEnriching,
+        referenceImageCache: any ReferenceImageCaching
+    ) {
         self.location = location
         self.locationEnricher = locationEnricher
-        _viewModel = State(initialValue: PlanViewModel(aiService: aiService, existingPlan: location.plan))
+        self.referenceImageCache = referenceImageCache
+        _viewModel = State(
+            initialValue: PlanViewModel(
+                aiService: aiService,
+                existingPlan: location.plan,
+                referenceImageCache: referenceImageCache
+            )
+        )
     }
 
     var body: some View {
@@ -74,6 +91,15 @@ struct PlanView: View {
                     Text(planSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    if viewModel.cachedReferenceTotal > 0 {
+                        Label(
+                            "Offline references: \(viewModel.cachedReferenceCount)/\(viewModel.cachedReferenceTotal)",
+                            systemImage: "arrow.down.circle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)
@@ -147,43 +173,41 @@ struct PlanView: View {
                         ArcFeatureTitle(
                             systemImage: "text.alignleft",
                             title: "Draft Plan",
-                            subtitle: "Saved for field and review."
+                            subtitle: viewModel.isDraftApproved ? "Saved for field and review." : "Review and save for field."
                         )
 
                         Text(savedPlanSummary)
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Text("To edit this plan, change the notes, output, or timing above and generate again. The saved checklist updates in place.")
+                        Text("To edit this plan, change the notes, output, or timing above and generate again.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
 
-                        Text(viewModel.response)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
+                        if !draftItems.isEmpty {
+                            PlanDraftCardStack(
+                                items: draftItems,
+                                onEdit: beginEditing,
+                                onDelete: deleteDraftItem
+                            )
+                        } else {
+                            Text(viewModel.response)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
 
-                        HStack(spacing: 10) {
-                            Button {
-                                navigationTarget = .field
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checklist")
-                                    Text("Open Field")
-                                }
-                                .frame(maxWidth: .infinity)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) {
+                                planSaveButton
+                                planOpenFieldButton
+                                planOpenReviewButton
                             }
-                            .buttonStyle(.glassProminent)
 
-                            Button {
-                                navigationTarget = .review
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "photo.on.rectangle")
-                                    Text("Open Review")
-                                }
-                                .frame(maxWidth: .infinity)
+                            VStack(spacing: 10) {
+                                planSaveButton
+                                planOpenFieldButton
+                                planOpenReviewButton
                             }
-                            .buttonStyle(.glass)
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -200,6 +224,9 @@ struct PlanView: View {
         .onChange(of: viewModel.shootStartTime) { _, _ in
             viewModel.ensureDefaultWindowTimes()
         }
+        .task(id: location.enrichmentJSON) {
+            viewModel.refreshReferenceCacheStatus(for: location)
+        }
         .navigationDestination(item: $navigationTarget) { target in
             switch target {
             case .field:
@@ -208,6 +235,33 @@ struct PlanView: View {
                 ReviewView(location: location)
             case .context:
                 LocationContextView(location: location, locationEnricher: locationEnricher)
+            }
+        }
+        .sheet(item: $editingItem) { _ in
+            NavigationStack {
+                Form {
+                    Section("Shot") {
+                        TextField("Title", text: $editTitle)
+                        TextField("Role", text: $editRole)
+                        TextField("Guidance", text: $editGuidance, axis: .vertical)
+                            .lineLimit(4, reservesSpace: true)
+                    }
+                }
+                .navigationTitle("Edit Shot")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") {
+                            editingItem = nil
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Save") {
+                            saveDraftEdits()
+                        }
+                    }
+                }
             }
         }
     }
@@ -221,15 +275,72 @@ struct PlanView: View {
     }
 
     private var savedPlanSummary: String {
-        guard let createdAt = location.plan?.createdAt else {
-            return "This draft is saved automatically when generation succeeds."
+        if let approvedAt = location.plan?.approvedAt, viewModel.isDraftApproved {
+            return "Saved for field on \(approvedAt.formatted(date: .abbreviated, time: .shortened))."
         }
 
-        return "Saved automatically on \(createdAt.formatted(date: .abbreviated, time: .shortened))."
+        guard location.plan?.createdAt != nil else {
+            return "Generate a draft first."
+        }
+
+        return "Draft generated. Save to make it available in field mode."
+    }
+
+    @ViewBuilder
+    private var planSaveButton: some View {
+        Button {
+            viewModel.approveDraft(for: location, modelContext: modelContext)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: viewModel.isDraftApproved ? "checkmark.seal.fill" : "square.and.arrow.down")
+                Text(viewModel.isDraftApproved ? "Saved for Field" : "Save Plan")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(viewModel.isDraftApproved || viewModel.isLoading || draftItems.isEmpty)
+    }
+
+    @ViewBuilder
+    private var planOpenFieldButton: some View {
+        Button {
+            navigationTarget = .field
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "checklist")
+                Text("Open Field")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
+    }
+
+    @ViewBuilder
+    private var planOpenReviewButton: some View {
+        Button {
+            navigationTarget = .review
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "photo.on.rectangle")
+                Text("Open Review")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
     }
 
     private var hasCachedContext: Bool {
         !location.enrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var draftItems: [ShootPlanItem] {
+        location.plan?.orderedItems ?? []
     }
 
     private func refreshContext() async {
@@ -244,8 +355,130 @@ struct PlanView: View {
             location.enrichmentJSON = formattedJSON
             location.lastEnrichedAt = bundle.generatedAt
             try modelContext.save()
+            viewModel.refreshReferenceCacheStatus(for: location)
         } catch {
             contextRefreshError = error.localizedDescription
+        }
+    }
+
+    private func beginEditing(_ item: ShootPlanItem) {
+        editTitle = item.title
+        editRole = item.role
+        editGuidance = item.guidance
+        editingItem = item
+    }
+
+    private func saveDraftEdits() {
+        guard let currentItem = editingItem else {
+            return
+        }
+
+        let cleanTitle = editTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanRole = editRole.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanGuidance = editGuidance.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleanTitle.isEmpty, !cleanGuidance.isEmpty else {
+            return
+        }
+
+        currentItem.title = cleanTitle
+        currentItem.role = cleanRole.isEmpty ? "Support" : cleanRole
+        currentItem.guidance = cleanGuidance
+        markDraftNeedsResave()
+        editingItem = nil
+    }
+
+    private func deleteDraftItem(_ item: ShootPlanItem) {
+        guard let plan = location.plan else {
+            return
+        }
+
+        let remainingItems = plan.orderedItems.filter { $0.id != item.id }
+        for (index, remainingItem) in remainingItems.enumerated() {
+            remainingItem.orderIndex = index
+        }
+
+        plan.items.removeAll { $0.id == item.id }
+        modelContext.delete(item)
+        markDraftNeedsResave()
+    }
+
+    private func markDraftNeedsResave() {
+        guard let plan = location.plan else {
+            return
+        }
+
+        plan.isApprovedForField = false
+        plan.approvedAt = nil
+        viewModel.isDraftApproved = false
+        try? modelContext.save()
+    }
+}
+
+private struct PlanDraftCardStack: View {
+    let items: [ShootPlanItem]
+    let onEdit: (ShootPlanItem) -> Void
+    let onDelete: (ShootPlanItem) -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                PlanDraftItemRow(
+                    sequenceNumber: index + 1,
+                    item: item,
+                    onEdit: { onEdit(item) },
+                    onDelete: { onDelete(item) }
+                )
+            }
+        }
+    }
+}
+
+private struct PlanDraftItemRow: View {
+    let sequenceNumber: Int
+    let item: ShootPlanItem
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Shot \(sequenceNumber)")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(ArcPalette.glowPrimary.opacity(0.15), in: Capsule())
+                    .foregroundStyle(ArcPalette.glowPrimary)
+
+                Text(item.title)
+                    .font(.headline)
+                Spacer(minLength: 0)
+                Text(item.role)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(ArcPalette.tint.opacity(0.14), in: Capsule())
+                    .foregroundStyle(ArcPalette.tint)
+            }
+
+            Text(item.guidance)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button("Edit", action: onEdit)
+                    .buttonStyle(.glass)
+                Button("Delete", role: .destructive, action: onDelete)
+                    .buttonStyle(.glass)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }

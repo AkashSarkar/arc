@@ -3,11 +3,25 @@ import SwiftUI
 
 struct FieldView: View {
     let location: ShootLocation
+    let referenceImageCache: any ReferenceImageCaching
 
     @Environment(\.modelContext) private var modelContext
+    @State private var cacheStatus = ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
+
+    init(
+        location: ShootLocation,
+        referenceImageCache: any ReferenceImageCaching = DiskReferenceImageCache()
+    ) {
+        self.location = location
+        self.referenceImageCache = referenceImageCache
+    }
 
     private var plan: ShootPlan? {
-        location.plan
+        guard let existingPlan = location.plan, existingPlan.isApprovedForField else {
+            return nil
+        }
+
+        return existingPlan
     }
 
     private var planItems: [ShootPlanItem] {
@@ -60,6 +74,15 @@ struct FieldView: View {
                     badges: heroBadges
                 ) {
                     FieldLocationContextRow(locationName: location.name)
+
+                    if cacheStatus.totalImages > 0 {
+                        Label(
+                            "Offline references: \(cacheStatus.cachedImages)/\(cacheStatus.totalImages)",
+                            systemImage: "arrow.down.circle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
 
                     if hasPlanItems {
                         ViewThatFits(in: .horizontal) {
@@ -135,6 +158,9 @@ struct FieldView: View {
         .background(ArcSceneBackground())
         .navigationTitle("Field")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: location.enrichmentJSON) {
+            cacheStatus = referenceImageCache.cacheStatus(for: location)
+        }
     }
 
     private func toggleItemCompletion(_ item: ShootPlanItem) {
@@ -252,12 +278,12 @@ private struct FieldPlanRequiredCard: View {
         ArcFeatureCard(accent: ArcPalette.glowPrimary) {
             ArcFeatureTitle(
                 systemImage: "sparkles.rectangle.stack",
-                title: "No saved plan",
+                title: "No approved plan",
                 subtitle: nil,
                 accent: ArcPalette.glowPrimary
             )
 
-            Text("Generate a plan for this location first so field mode can reuse the same shot list.")
+            Text("Generate a draft, then tap Save Plan in planning before opening field mode.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

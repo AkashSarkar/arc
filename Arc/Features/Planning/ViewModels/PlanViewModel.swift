@@ -6,12 +6,16 @@ import SwiftData
 @Observable
 final class PlanViewModel {
     private let shotListGenerator: any ShotListGenerating
+    private let referenceImageCache: any ReferenceImageCaching
     private let calendar = Calendar.current
 
     var notes: String = ""
     var response: String = ""
     var errorMessage: String?
     var isLoading: Bool = false
+    var isDraftApproved: Bool = false
+    var cachedReferenceCount: Int = 0
+    var cachedReferenceTotal: Int = 0
     var shootWindowMode: ShootWindowMode = .now
     var outputIntent: OutputIntent = .instagramCarousel
     var shootDate: Date = Date()
@@ -21,9 +25,11 @@ final class PlanViewModel {
     init(
         aiService: any AIServicing,
         existingPlan: ShootPlan? = nil,
-        shotListGenerator: (any ShotListGenerating)? = nil
+        shotListGenerator: (any ShotListGenerating)? = nil,
+        referenceImageCache: any ReferenceImageCaching = DiskReferenceImageCache()
     ) {
         self.shotListGenerator = shotListGenerator ?? ShotListGenerator(aiService: aiService)
+        self.referenceImageCache = referenceImageCache
 
         guard let existingPlan else {
             return
@@ -41,6 +47,12 @@ final class PlanViewModel {
         shootDate = existingPlan.shootDate
         shootStartTime = existingPlan.shootStartTime
         shootEndTime = existingPlan.shootEndTime
+        isDraftApproved = existingPlan.isApprovedForField
+        if let location = existingPlan.location {
+            let cacheStatus = referenceImageCache.cacheStatus(for: location)
+            cachedReferenceCount = cacheStatus.cachedImages
+            cachedReferenceTotal = cacheStatus.totalImages
+        }
     }
 
     var shootWindowSummary: String {
@@ -77,9 +89,36 @@ final class PlanViewModel {
             )
 
             try modelContext.save()
+            let cacheResult = await referenceImageCache.cacheReferenceImages(for: location)
             response = ShotPlanParser.formattedResponse(from: generationResult.drafts, fallback: generationResult.rawResponse)
+
+            if cacheResult.totalImages > 0, cacheResult.cachedImages == 0 {
+                errorMessage = "Plan generated, but reference image caching failed. You may need connectivity for image previews."
+            }
+
+            cachedReferenceCount = cacheResult.cachedImages
+            cachedReferenceTotal = cacheResult.totalImages
+            isDraftApproved = false
         } catch {
             response = ""
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func approveDraft(for location: ShootLocation, modelContext: ModelContext) {
+        guard let plan = location.plan, !plan.items.isEmpty else {
+            errorMessage = "Generate a draft before saving."
+            return
+        }
+
+        plan.isApprovedForField = true
+        plan.approvedAt = Date()
+        isDraftApproved = true
+        errorMessage = nil
+
+        do {
+            try modelContext.save()
+        } catch {
             errorMessage = error.localizedDescription
         }
     }
@@ -89,6 +128,12 @@ final class PlanViewModel {
            let adjustedEnd = calendar.date(byAdding: .hour, value: 2, to: shootStartTime) {
             shootEndTime = adjustedEnd
         }
+    }
+
+    func refreshReferenceCacheStatus(for location: ShootLocation) {
+        let status = referenceImageCache.cacheStatus(for: location)
+        cachedReferenceCount = status.cachedImages
+        cachedReferenceTotal = status.totalImages
     }
 
     private func generationInput() -> ShotListGenerationInput? {
@@ -162,6 +207,8 @@ final class PlanViewModel {
         plan.shootDate = shootDate
         plan.shootStartTime = shootStartTime
         plan.shootEndTime = shootEndTime
+        plan.isApprovedForField = false
+        plan.approvedAt = nil
 
         for existingItem in Array(plan.items) {
             modelContext.delete(existingItem)

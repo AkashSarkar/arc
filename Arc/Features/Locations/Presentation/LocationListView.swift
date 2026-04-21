@@ -6,6 +6,7 @@ struct LocationListView: View {
     let apiKeyStore: any APIKeyProviding
     let defaultAIConfiguration: AIConfiguration
     let locationEnricher: any LocationEnriching
+    let referenceImageCache: any ReferenceImageCaching
     let locationEditorServices: LocationEditorServiceFactory
 
     @Environment(\.modelContext) private var modelContext
@@ -50,6 +51,7 @@ struct LocationListView: View {
                                 location: location,
                                 aiService: aiService,
                                 locationEnricher: locationEnricher,
+                                referenceImageCache: referenceImageCache,
                                 locationEditorServices: locationEditorServices
                             )
                         } label: {

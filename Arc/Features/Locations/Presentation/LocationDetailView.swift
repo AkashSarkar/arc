@@ -4,6 +4,7 @@ struct LocationDetailView: View {
     let location: ShootLocation
     let aiService: any AIServicing
     let locationEnricher: any LocationEnriching
+    let referenceImageCache: any ReferenceImageCaching
     let locationEditorServices: LocationEditorServiceFactory
 
     @State private var isPresentingEditLocation = false
@@ -64,7 +65,12 @@ struct LocationDetailView: View {
 
             Section {
                 NavigationLink {
-                    PlanView(location: location, aiService: aiService, locationEnricher: locationEnricher)
+                    PlanView(
+                        location: location,
+                        aiService: aiService,
+                        locationEnricher: locationEnricher,
+                        referenceImageCache: referenceImageCache
+                    )
                 } label: {
                     WorkflowCard(
                         title: "Plan",

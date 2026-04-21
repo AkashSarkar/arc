@@ -6,6 +6,7 @@ struct HomeView: View {
     let apiKeyStore: any APIKeyProviding
     let defaultAIConfiguration: AIConfiguration
     let locationEnricher: any LocationEnriching
+    let referenceImageCache: any ReferenceImageCaching
     let locationEditorServices: LocationEditorServiceFactory
 
     @Environment(\.modelContext) private var modelContext
@@ -26,6 +27,7 @@ struct HomeView: View {
                 apiKeyStore: apiKeyStore,
                 defaultAIConfiguration: defaultAIConfiguration,
                 locationEnricher: locationEnricher,
+                referenceImageCache: referenceImageCache,
                 locationEditorServices: locationEditorServices
             )
         }
@@ -59,6 +61,7 @@ struct HomeView: View {
         apiKeyStore: PreviewAPIKeyStore(),
         defaultAIConfiguration: AIConfiguration.fromBundle(),
         locationEnricher: PreviewLocationEnricher(),
+        referenceImageCache: PreviewReferenceImageCache(),
         locationEditorServices: .live
     )
     .modelContainer(for: [ShootLocation.self, ShootPlan.self, ShootPlanItem.self, LLMProfile.self], inMemory: true)
@@ -119,5 +122,14 @@ private struct PreviewLocationEnricher: LocationEnriching {
                 moonIlluminationPercent: 0
             )
         )
+    }
+}
+private struct PreviewReferenceImageCache: ReferenceImageCaching {
+    func cacheReferenceImages(for location: ShootLocation) async -> ReferenceImageCacheResult {
+        ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
+    }
+
+    func cacheStatus(for location: ShootLocation) -> ReferenceImageCacheResult {
+        ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
     }
 }

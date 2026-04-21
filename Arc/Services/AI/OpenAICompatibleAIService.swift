@@ -101,7 +101,7 @@ struct OpenAICompatibleAIService: AIServicing {
             ],
             maxTokens: maxTokens,
             temperature: configuration.temperature,
-            responseFormat: configuration.useStructuredOutput ? .init(type: "json_object") : nil
+            responseFormat: nil
         )
     }
 

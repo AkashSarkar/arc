@@ -68,6 +68,21 @@ final class PlanViewModel {
         }
     }
 
+    var shootWindowInterval: DateInterval? {
+        switch shootWindowMode {
+        case .now:
+            let start = Date()
+            return DateInterval(start: start, end: start.addingTimeInterval(2 * 3600))
+        case .custom:
+            let window = customShootWindow()
+            guard window.end > window.start else {
+                return nil
+            }
+
+            return DateInterval(start: window.start, end: window.end)
+        }
+    }
+
     func generatePlan(for location: ShootLocation, modelContext: ModelContext) async {
         guard let input = generationInput() else {
             return

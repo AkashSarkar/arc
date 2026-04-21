@@ -4,11 +4,14 @@ import SwiftUI
 struct PlanEditorSheet: View {
     let location: ShootLocation
     let aiService: any AIServicing
+    let locationEnricher: any LocationEnriching
     let referenceImageCache: any ReferenceImageCaching
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: PlanViewModel
+    @State private var isRefreshingContext = false
+    @State private var contextRefreshError: String?
     @State private var editingItem: ShootPlanItem?
     @State private var editTitle = ""
     @State private var editRole = ""
@@ -17,10 +20,12 @@ struct PlanEditorSheet: View {
     init(
         location: ShootLocation,
         aiService: any AIServicing,
+        locationEnricher: any LocationEnriching,
         referenceImageCache: any ReferenceImageCaching
     ) {
         self.location = location
         self.aiService = aiService
+        self.locationEnricher = locationEnricher
         self.referenceImageCache = referenceImageCache
         _viewModel = State(
             initialValue: PlanViewModel(
@@ -50,6 +55,60 @@ struct PlanEditorSheet: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+
+                Section {
+                    ArcFeatureCard(accent: contextAccent) {
+                        ArcFeatureTitle(
+                            systemImage: hasCachedContext ? "checkmark.circle.fill" : "map.circle.fill",
+                            title: hasCachedContext ? "Context ready" : "Fetch context",
+                            subtitle: contextSubtitle,
+                            accent: contextAccent
+                        )
+
+                        if let contextRefreshError {
+                            Text(contextRefreshError)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+
+                        HStack(spacing: 8) {
+                            Button {
+                                Task {
+                                    await refreshContext()
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if isRefreshingContext {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    }
+
+                                    Text(isRefreshingContext ? "Refreshing..." : (hasCachedContext ? "Refresh Context" : "Fetch Context"))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(isRefreshingContext || viewModel.isLoading)
+
+                            if hasCachedContext {
+                                NavigationLink {
+                                    LocationContextView(location: location, locationEnricher: locationEnricher)
+                                } label: {
+                                    Label("Inspect", systemImage: "doc.text.magnifyingglass")
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.glass)
+                            }
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }
@@ -164,6 +223,9 @@ struct PlanEditorSheet: View {
             .onChange(of: viewModel.shootStartTime) { _, _ in
                 viewModel.ensureDefaultWindowTimes()
             }
+            .task(id: location.enrichmentJSON) {
+                viewModel.refreshReferenceCacheStatus(for: location)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
@@ -203,6 +265,49 @@ struct PlanEditorSheet: View {
                     }
                 }
             }
+        }
+    }
+
+    private var hasCachedContext: Bool {
+        !location.enrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var contextAccent: Color {
+        hasCachedContext ? ArcPalette.tint : ArcPalette.glowPrimary
+    }
+
+    private var contextSubtitle: String {
+        if let lastEnrichedAt = location.lastEnrichedAt, hasCachedContext {
+            return "Cached \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened)). Regeneration will use landmarks, weather, references, and sun/moon timing."
+        }
+
+        return "Fetch landmarks, weather, references, and sun/moon timing before regenerating this checklist."
+    }
+
+    private func refreshContext() async {
+        guard !isRefreshingContext else {
+            return
+        }
+
+        guard let shootWindow = viewModel.shootWindowInterval else {
+            contextRefreshError = "End time must be after start time."
+            return
+        }
+
+        isRefreshingContext = true
+        contextRefreshError = nil
+        defer { isRefreshingContext = false }
+
+        let bundle = await locationEnricher.enrich(location: location, shootWindow: shootWindow)
+
+        do {
+            let formattedJSON = try bundle.formattedJSONString()
+            location.enrichmentJSON = formattedJSON
+            location.lastEnrichedAt = bundle.generatedAt
+            try modelContext.save()
+            viewModel.refreshReferenceCacheStatus(for: location)
+        } catch {
+            contextRefreshError = error.localizedDescription
         }
     }
 

@@ -246,6 +246,7 @@ struct FieldView: View {
             PlanEditorSheet(
                 location: location,
                 aiService: aiService,
+                locationEnricher: locationEnricher,
                 referenceImageCache: referenceImageCache
             )
         }

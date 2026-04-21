@@ -2,6 +2,7 @@ import Foundation
 
 protocol ReferenceImageCaching {
     func cacheReferenceImages(for location: ShootLocation) async -> ReferenceImageCacheResult
+    func cacheStatus(for location: ShootLocation) -> ReferenceImageCacheResult
 }
 
 struct ReferenceImageCacheResult {
@@ -22,18 +23,8 @@ struct DiskReferenceImageCache: ReferenceImageCaching {
     }
 
     func cacheReferenceImages(for location: ShootLocation) async -> ReferenceImageCacheResult {
-        guard let contextBundle = LocationContextBundle.decode(from: location.enrichmentJSON) else {
+        guard let imageTargets = imageTargets(for: location) else {
             return ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
-        }
-
-        let imageTargets = contextBundle.referenceImages.compactMap { referenceImage -> (id: String, url: URL)? in
-            guard let imageURLString = referenceImage.imageURLString,
-                  let url = URL(string: imageURLString)
-            else {
-                return nil
-            }
-
-            return (id: referenceImage.id, url: url)
         }
 
         guard !imageTargets.isEmpty else {
@@ -74,6 +65,44 @@ struct DiskReferenceImageCache: ReferenceImageCaching {
         }
 
         return ReferenceImageCacheResult(totalImages: imageTargets.count, cachedImages: cachedImages)
+    }
+
+    func cacheStatus(for location: ShootLocation) -> ReferenceImageCacheResult {
+        guard let imageTargets = imageTargets(for: location) else {
+            return ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
+        }
+
+        guard !imageTargets.isEmpty else {
+            return ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
+        }
+
+        let cacheDirectory = referenceImageDirectory(for: location.id)
+        var cachedImages = 0
+
+        for target in imageTargets {
+            let fileURL = cacheDirectory.appending(path: fileName(for: target.id, sourceURL: target.url))
+            if fileManager.fileExists(atPath: fileURL.path()) {
+                cachedImages += 1
+            }
+        }
+
+        return ReferenceImageCacheResult(totalImages: imageTargets.count, cachedImages: cachedImages)
+    }
+
+    private func imageTargets(for location: ShootLocation) -> [(id: String, url: URL)]? {
+        guard let contextBundle = LocationContextBundle.decode(from: location.enrichmentJSON) else {
+            return nil
+        }
+
+        return contextBundle.referenceImages.compactMap { referenceImage -> (id: String, url: URL)? in
+            guard let imageURLString = referenceImage.imageURLString,
+                  let url = URL(string: imageURLString)
+            else {
+                return nil
+            }
+
+            return (id: referenceImage.id, url: url)
+        }
     }
 
     private func referenceImageDirectory(for locationID: UUID) -> URL {

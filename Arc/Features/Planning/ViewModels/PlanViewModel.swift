@@ -14,6 +14,8 @@ final class PlanViewModel {
     var errorMessage: String?
     var isLoading: Bool = false
     var isDraftApproved: Bool = false
+    var cachedReferenceCount: Int = 0
+    var cachedReferenceTotal: Int = 0
     var shootWindowMode: ShootWindowMode = .now
     var outputIntent: OutputIntent = .instagramCarousel
     var shootDate: Date = Date()
@@ -46,6 +48,11 @@ final class PlanViewModel {
         shootStartTime = existingPlan.shootStartTime
         shootEndTime = existingPlan.shootEndTime
         isDraftApproved = existingPlan.isApprovedForField
+        if let location = existingPlan.location {
+            let cacheStatus = referenceImageCache.cacheStatus(for: location)
+            cachedReferenceCount = cacheStatus.cachedImages
+            cachedReferenceTotal = cacheStatus.totalImages
+        }
     }
 
     var shootWindowSummary: String {
@@ -89,6 +96,8 @@ final class PlanViewModel {
                 errorMessage = "Plan generated, but reference image caching failed. You may need connectivity for image previews."
             }
 
+            cachedReferenceCount = cacheResult.cachedImages
+            cachedReferenceTotal = cacheResult.totalImages
             isDraftApproved = false
         } catch {
             response = ""
@@ -119,6 +128,12 @@ final class PlanViewModel {
            let adjustedEnd = calendar.date(byAdding: .hour, value: 2, to: shootStartTime) {
             shootEndTime = adjustedEnd
         }
+    }
+
+    func refreshReferenceCacheStatus(for location: ShootLocation) {
+        let status = referenceImageCache.cacheStatus(for: location)
+        cachedReferenceCount = status.cachedImages
+        cachedReferenceTotal = status.totalImages
     }
 
     private func generationInput() -> ShotListGenerationInput? {

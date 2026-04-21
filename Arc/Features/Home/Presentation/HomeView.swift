@@ -128,5 +128,8 @@ private struct PreviewReferenceImageCache: ReferenceImageCaching {
     func cacheReferenceImages(for location: ShootLocation) async -> ReferenceImageCacheResult {
         ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
     }
-}
 
+    func cacheStatus(for location: ShootLocation) -> ReferenceImageCacheResult {
+        ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
+    }
+}

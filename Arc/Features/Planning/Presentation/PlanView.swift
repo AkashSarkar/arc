@@ -91,6 +91,15 @@ struct PlanView: View {
                     Text(planSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    if viewModel.cachedReferenceTotal > 0 {
+                        Label(
+                            "Offline references: \(viewModel.cachedReferenceCount)/\(viewModel.cachedReferenceTotal)",
+                            systemImage: "arrow.down.circle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                 }
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)
@@ -176,15 +185,11 @@ struct PlanView: View {
                             .foregroundStyle(.secondary)
 
                         if !draftItems.isEmpty {
-                            VStack(spacing: 10) {
-                                ForEach(draftItems) { item in
-                                    PlanDraftItemRow(
-                                        item: item,
-                                        onEdit: { beginEditing(item) },
-                                        onDelete: { deleteDraftItem(item) }
-                                    )
-                                }
-                            }
+                            PlanDraftCardStack(
+                                items: draftItems,
+                                onEdit: beginEditing,
+                                onDelete: deleteDraftItem
+                            )
                         } else {
                             Text(viewModel.response)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -240,6 +245,9 @@ struct PlanView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: viewModel.shootStartTime) { _, _ in
             viewModel.ensureDefaultWindowTimes()
+        }
+        .task(id: location.enrichmentJSON) {
+            viewModel.refreshReferenceCacheStatus(for: location)
         }
         .navigationDestination(item: $navigationTarget) { target in
             switch target {
@@ -320,6 +328,7 @@ struct PlanView: View {
             location.enrichmentJSON = formattedJSON
             location.lastEnrichedAt = bundle.generatedAt
             try modelContext.save()
+            viewModel.refreshReferenceCacheStatus(for: location)
         } catch {
             contextRefreshError = error.localizedDescription
         }
@@ -379,7 +388,27 @@ struct PlanView: View {
     }
 }
 
+private struct PlanDraftCardStack: View {
+    let items: [ShootPlanItem]
+    let onEdit: (ShootPlanItem) -> Void
+    let onDelete: (ShootPlanItem) -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                PlanDraftItemRow(
+                    sequenceNumber: index + 1,
+                    item: item,
+                    onEdit: { onEdit(item) },
+                    onDelete: { onDelete(item) }
+                )
+            }
+        }
+    }
+}
+
 private struct PlanDraftItemRow: View {
+    let sequenceNumber: Int
     let item: ShootPlanItem
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -387,6 +416,13 @@ private struct PlanDraftItemRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Shot \(sequenceNumber)")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(ArcPalette.glowPrimary.opacity(0.15), in: Capsule())
+                    .foregroundStyle(ArcPalette.glowPrimary)
+
                 Text(item.title)
                     .font(.headline)
                 Spacer(minLength: 0)

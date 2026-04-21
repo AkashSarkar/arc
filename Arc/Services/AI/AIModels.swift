@@ -6,16 +6,22 @@ struct ChatCompletionsRequest: Encodable {
         let content: String
     }
 
+    struct ResponseFormat: Encodable {
+        let type: String
+    }
+
     let model: String
     let messages: [Message]
     let maxTokens: Int
     let temperature: Double
+    let responseFormat: ResponseFormat?
 
     enum CodingKeys: String, CodingKey {
         case model
         case messages
         case maxTokens = "max_tokens"
         case temperature
+        case responseFormat = "response_format"
     }
 }
 

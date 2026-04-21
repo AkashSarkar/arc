@@ -8,6 +8,10 @@ struct PlannedShotDraft {
 
 enum ShotPlanParser {
     static func parse(response: String) -> [PlannedShotDraft] {
+        if let jsonDrafts = parseJSONResponse(response), !jsonDrafts.isEmpty {
+            return jsonDrafts
+        }
+
         let candidateLines = response
             .components(separatedBy: .newlines)
             .map(cleanedLine)
@@ -30,6 +34,71 @@ enum ShotPlanParser {
             "\(index + 1). \(draft.title)\nRole: \(draft.role)\nGuidance: \(draft.guidance)"
         }
         .joined(separator: "\n\n")
+    }
+
+    private static func parseJSONResponse(_ response: String) -> [PlannedShotDraft]? {
+        guard let jsonData = extractJSONObjectData(from: response) else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        guard let payload = try? decoder.decode(ShotPlanPayload.self, from: jsonData) else {
+            return nil
+        }
+
+        return payload.shots.map { shot in
+            let title = normalizedTitle(from: shot.description)
+            let guidanceComponents = [
+                "Composition: \(shot.compositionNote)",
+                "Lens: \(shot.focalLengthMin)-\(shot.focalLengthMax)mm",
+                "Settings: \(shot.settingsHint)",
+                "Timing: \(shot.timeWindowLabel)",
+                "Why: \(shot.rationale)",
+            ]
+
+            return PlannedShotDraft(
+                title: title,
+                role: shot.role.capitalized,
+                guidance: guidanceComponents.joined(separator: " • ")
+            )
+        }
+    }
+
+    private static func extractJSONObjectData(from response: String) -> Data? {
+        let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let normalized = trimmed
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let startIndex = normalized.firstIndex(of: "{"),
+              let endIndex = normalized.lastIndex(of: "}")
+        else {
+            return nil
+        }
+
+        let jsonSubstring = normalized[startIndex...endIndex]
+        return String(jsonSubstring).data(using: .utf8)
+    }
+
+    private static func normalizedTitle(from description: String) -> String {
+        let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "Untitled Shot"
+        }
+
+        if let separatorRange = trimmed.range(of: ":") {
+            let candidate = trimmed[..<separatorRange.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+            if candidate.count >= 4 {
+                return candidate
+            }
+        }
+
+        return trimmed.count > 70 ? String(trimmed.prefix(70)).trimmingCharacters(in: .whitespacesAndNewlines) + "..." : trimmed
     }
 
     private static func cleanedLine(_ rawLine: String) -> String {
@@ -170,5 +239,33 @@ enum ShotPlanParser {
         }
 
         return "Support"
+    }
+}
+
+private struct ShotPlanPayload: Decodable {
+    let shots: [ShotPlanJSONShot]
+}
+
+private struct ShotPlanJSONShot: Decodable {
+    let sequence: Int
+    let role: String
+    let description: String
+    let compositionNote: String
+    let focalLengthMin: Int
+    let focalLengthMax: Int
+    let settingsHint: String
+    let timeWindowLabel: String
+    let rationale: String
+
+    enum CodingKeys: String, CodingKey {
+        case sequence
+        case role
+        case description
+        case compositionNote = "composition_note"
+        case focalLengthMin = "focal_length_min"
+        case focalLengthMax = "focal_length_max"
+        case settingsHint = "settings_hint"
+        case timeWindowLabel = "time_window_label"
+        case rationale
     }
 }

@@ -1,14 +1,19 @@
+import SwiftData
 import SwiftUI
 
 struct PlanView: View {
     let location: ShootLocation
+    let locationEnricher: any LocationEnriching
 
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: PlanViewModel
     @State private var navigationTarget: PlanNavigationTarget?
+    @State private var isRefreshingContext = false
+    @State private var contextRefreshError: String?
 
-    init(location: ShootLocation, aiService: any AIServicing) {
+    init(location: ShootLocation, aiService: any AIServicing, locationEnricher: any LocationEnriching) {
         self.location = location
+        self.locationEnricher = locationEnricher
         _viewModel = State(initialValue: PlanViewModel(aiService: aiService, existingPlan: location.plan))
     }
 
@@ -24,8 +29,21 @@ struct PlanView: View {
 
                     PlanPromptContextRow(
                         hasCachedContext: hasCachedContext,
-                        lastEnrichedAt: location.lastEnrichedAt
+                        lastEnrichedAt: location.lastEnrichedAt,
+                        isRefreshing: isRefreshingContext,
+                        onRefresh: {
+                            Task { await refreshContext() }
+                        },
+                        onInspect: {
+                            navigationTarget = .context
+                        }
                     )
+
+                    if let contextRefreshError {
+                        Text(contextRefreshError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
 
                     HStack(spacing: 10) {
                         PlanFilterMenu(
@@ -188,6 +206,8 @@ struct PlanView: View {
                 FieldView(location: location)
             case .review:
                 ReviewView(location: location)
+            case .context:
+                LocationContextView(location: location, locationEnricher: locationEnricher)
             }
         }
     }
@@ -211,11 +231,29 @@ struct PlanView: View {
     private var hasCachedContext: Bool {
         !location.enrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    private func refreshContext() async {
+        isRefreshingContext = true
+        contextRefreshError = nil
+        defer { isRefreshingContext = false }
+
+        let bundle = await locationEnricher.enrich(location: location, shootWindow: nil)
+
+        do {
+            let formattedJSON = try bundle.formattedJSONString()
+            location.enrichmentJSON = formattedJSON
+            location.lastEnrichedAt = bundle.generatedAt
+            try modelContext.save()
+        } catch {
+            contextRefreshError = error.localizedDescription
+        }
+    }
 }
 
 private enum PlanNavigationTarget: String, Identifiable {
     case field
     case review
+    case context
 
     var id: String { rawValue }
 }
@@ -254,17 +292,20 @@ private struct PlanLocationContextRow: View {
 private struct PlanPromptContextRow: View {
     let hasCachedContext: Bool
     let lastEnrichedAt: Date?
+    let isRefreshing: Bool
+    let onRefresh: () -> Void
+    let onInspect: () -> Void
 
     private var title: String {
-        hasCachedContext ? "Cached context will be used" : "No cached context in this prompt"
+        hasCachedContext ? "Context ready" : "No context yet"
     }
 
     private var subtitle: String {
         if let lastEnrichedAt, hasCachedContext {
-            return "Using the cached bundle from \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened)) to ground landmarks, timing, and conditions."
+            return "Cached \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened)). Landmarks, weather, and timing will ground the prompt."
         }
 
-        return "Generate context from the location detail screen if you want landmarks, weather, and sun/moon timing included."
+        return "Fetch context to include landmarks, weather, and sun/moon timing in the prompt."
     }
 
     private var systemImage: String {
@@ -276,20 +317,49 @@ private struct PlanPromptContextRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(tint)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(tint)
 
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button(action: onRefresh) {
+                    HStack(spacing: 6) {
+                        if isRefreshing {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+
+                        Text(isRefreshing ? "Refreshing..." : (hasCachedContext ? "Refresh" : "Fetch Context"))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .disabled(isRefreshing)
+
+                if hasCachedContext {
+                    Button(action: onInspect) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                            Text("Inspect")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -100,7 +100,8 @@ struct OpenAICompatibleAIService: AIServicing {
                 .init(role: "user", content: prompt)
             ],
             maxTokens: maxTokens,
-            temperature: configuration.temperature
+            temperature: configuration.temperature,
+            responseFormat: configuration.useStructuredOutput ? .init(type: "json_object") : nil
         )
     }
 

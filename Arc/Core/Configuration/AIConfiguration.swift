@@ -9,6 +9,7 @@ struct AIConfiguration {
     let requestsPerMinute: Int
     let apiKeyAccount: String?
     let requiresAPIKey: Bool
+    let useStructuredOutput: Bool
 
     var chatCompletionsURL: URL {
         let normalizedBaseURL = Self.normalizedOpenAICompatibleBaseURL(baseURL)
@@ -30,6 +31,7 @@ struct AIConfiguration {
         let requestsPerMinute = bundle.object(forInfoDictionaryKey: "AI_REQUESTS_PER_MINUTE") as? Int ?? 20
         let rawAPIKeyAccount = bundle.object(forInfoDictionaryKey: "AI_API_KEY_ACCOUNT") as? String ?? "arc.ai.default"
         let apiKeyAccount = normalizedKeyAccount(rawAPIKeyAccount)
+        let useStructuredOutput = bundle.object(forInfoDictionaryKey: "AI_USE_STRUCTURED_OUTPUT") as? Bool ?? false
         let baseURL = normalizedOpenAICompatibleBaseURL(
             URL(string: baseURLString) ?? URL(string: "https://api.openai.com/v1")!
         )
@@ -42,7 +44,8 @@ struct AIConfiguration {
             temperature: temperature,
             requestsPerMinute: max(1, requestsPerMinute),
             apiKeyAccount: apiKeyAccount,
-            requiresAPIKey: apiKeyAccount != nil
+            requiresAPIKey: apiKeyAccount != nil,
+            useStructuredOutput: useStructuredOutput
         )
     }
 
@@ -59,7 +62,8 @@ struct AIConfiguration {
             temperature: defaults.temperature,
             requestsPerMinute: defaults.requestsPerMinute,
             apiKeyAccount: normalizedKeyAccount(profile.apiKeyAccount),
-            requiresAPIKey: profile.requiresAPIKey
+            requiresAPIKey: profile.requiresAPIKey,
+            useStructuredOutput: profile.useStructuredOutput
         )
     }
 

@@ -42,7 +42,7 @@ struct ShootSpotPickerView: View {
             ArcFeatureTitle(
                 systemImage: "magnifyingglass",
                 title: "Find the spot",
-                subtitle: "We start from your current GPS location when available. Search or drag the map until the pin is exactly where you will shoot.",
+                subtitle: nil,
                 accent: ArcPalette.glowPrimary
             )
 

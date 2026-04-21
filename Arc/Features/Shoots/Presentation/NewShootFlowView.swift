@@ -57,37 +57,13 @@ struct NewShootFlowView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    ArcHeroHeader(
-                        systemImage: step.systemImage,
-                        title: step.title,
-                        subtitle: step.subtitle,
-                        badges: [ArcHeroBadge(label: "\(step.rawValue + 1) of \(NewShootStep.allCases.count)", systemImage: "list.number")]
-                    )
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                }
-
-                currentStepContent
-
-                if let errorMessage {
-                    Section {
-                        ArcFeatureCard(accent: .red) {
-                            Text(errorMessage)
-                                .font(.subheadline)
-                                .foregroundStyle(.red)
-                        }
-                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                    }
+            Group {
+                if step == .location {
+                    locationStepScreen
+                } else {
+                    wizardForm
                 }
             }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .background(ArcSceneBackground())
             .navigationTitle("New Shoot")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(isGenerating || isCommitting)
@@ -105,11 +81,58 @@ struct NewShootFlowView: View {
         }
     }
 
+    private var wizardForm: some View {
+        Form {
+            Section {
+                ArcHeroHeader(
+                    systemImage: step.systemImage,
+                    title: step.title,
+                    subtitle: step.subtitle,
+                    badges: [ArcHeroBadge(label: "\(step.rawValue + 1) of \(NewShootStep.allCases.count)", systemImage: "list.number")]
+                )
+                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
+            currentStepContent
+
+            if let errorMessage {
+                Section {
+                    ArcFeatureCard(accent: .red) {
+                        Text(errorMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.red)
+                    }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(ArcSceneBackground())
+    }
+
+    private var locationStepScreen: some View {
+        ShootSpotPickerView(
+            viewModel: locationViewModel,
+            systemImage: step.systemImage,
+            title: step.title,
+            subtitle: "Search, use GPS, or drag the map until the pin sits on the exact place you will shoot.",
+            badges: [ArcHeroBadge(label: "\(step.rawValue + 1) of \(NewShootStep.allCases.count)", systemImage: "list.number")],
+            primaryButtonTitle: "Continue",
+            primarySystemImage: "arrow.right",
+            primaryAction: continueFromLocation
+        )
+    }
+
     @ViewBuilder
     private var currentStepContent: some View {
         switch step {
         case .location:
-            locationStep
+            EmptyView()
         case .framing:
             framingStep
         case .notes:
@@ -118,26 +141,6 @@ struct NewShootFlowView: View {
             generateStep
         case .review:
             reviewStep
-        }
-    }
-
-    private var locationStep: some View {
-        Section {
-            NewShootLocationStep(viewModel: locationViewModel)
-                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-
-            Button {
-                continueFromLocation()
-            } label: {
-                Text("Continue")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glassProminent)
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
         }
     }
 
@@ -626,185 +629,5 @@ private enum NewShootStep: Int, CaseIterable {
         case .review:
             return "checklist"
         }
-    }
-}
-
-private struct NewShootLocationStep: View {
-    @Bindable var viewModel: LocationEditorViewModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ArcFeatureCard {
-                ArcFeatureTitle(
-                    systemImage: "text.cursor",
-                    title: "Location",
-                    subtitle: nil
-                )
-
-                editorTextField("Location Name", text: $viewModel.name)
-                    .textInputAutocapitalization(.words)
-
-                Button {
-                    Task {
-                        await viewModel.useCurrentLocation()
-                    }
-                } label: {
-                    Label(
-                        viewModel.isResolvingCurrentLocation ? "Finding current location..." : "Use Current Location",
-                        systemImage: "location.fill"
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(viewModel.isResolvingCurrentLocation)
-
-                if viewModel.isResolvingCurrentLocation {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-
-            ArcFeatureCard(accent: ArcPalette.glowSecondary) {
-                ArcFeatureTitle(
-                    systemImage: "magnifyingglass",
-                    title: "Search",
-                    subtitle: nil
-                )
-
-                HStack(alignment: .center, spacing: 10) {
-                    editorTextField("Search place or address", text: $viewModel.searchQuery)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                        .submitLabel(.search)
-                        .onSubmit {
-                            Task {
-                                await viewModel.searchUsingQuery()
-                            }
-                        }
-
-                    Button("Search") {
-                        Task {
-                            await viewModel.searchUsingQuery()
-                        }
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(
-                        viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                        viewModel.isResolvingSearchResult
-                    )
-                }
-
-                if viewModel.isResolvingSearchResult {
-                    ProgressView("Searching...")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                if !viewModel.suggestions.isEmpty {
-                    VStack(spacing: 10) {
-                        ForEach(viewModel.suggestions) { suggestion in
-                            Button {
-                                Task {
-                                    await viewModel.resolveSuggestion(suggestion)
-                                }
-                            } label: {
-                                HStack(alignment: .top, spacing: 12) {
-                                    ArcMiniIconBadge(systemImage: "mappin.and.ellipse")
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(suggestion.title)
-                                            .foregroundStyle(.primary)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                        if !suggestion.subtitle.isEmpty {
-                                            Text(suggestion.subtitle)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                        }
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(14)
-                                .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                        .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-
-            ArcFeatureCard(accent: ArcPalette.glowPrimary) {
-                ArcFeatureTitle(
-                    systemImage: "map",
-                    title: "Map Pin",
-                    subtitle: nil
-                )
-
-                LocationMapPicker(
-                    selectedCoordinate: viewModel.selectedCoordinate,
-                    mapFocusCoordinate: viewModel.mapFocusCoordinate,
-                    mapFocusVersion: viewModel.mapFocusVersion,
-                    onMapSelectionChanged: { coordinate in
-                        viewModel.updateMapPin(to: coordinate)
-                    }
-                )
-
-                Label(viewModel.coordinateSummary, systemImage: "location.north.line")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-                    }
-
-                if viewModel.isReverseGeocoding {
-                    ProgressView("Updating name...")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-
-            ArcFeatureCard {
-                ArcFeatureTitle(
-                    systemImage: "number",
-                    title: "Coordinates",
-                    subtitle: nil
-                )
-
-                editorTextField("Latitude", text: $viewModel.latitudeText)
-                    .keyboardType(.decimalPad)
-
-                editorTextField("Longitude", text: $viewModel.longitudeText)
-                    .keyboardType(.decimalPad)
-            }
-
-            if let errorMessage = viewModel.errorMessage {
-                ArcFeatureCard(accent: .red) {
-                    Text(errorMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                }
-            }
-        }
-        .task {
-            await viewModel.loadDefaultLocationIfNeeded()
-        }
-    }
-
-    private func editorTextField(_ title: LocalizedStringKey, text: Binding<String>) -> some View {
-        TextField(title, text: text)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-            }
     }
 }

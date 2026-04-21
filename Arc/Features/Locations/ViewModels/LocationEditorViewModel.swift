@@ -57,6 +57,26 @@ final class LocationEditorViewModel {
         isEditing ? "Update" : "Save"
     }
 
+    var selectionTitle: String {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleanName.isEmpty ? "Unnamed shoot spot" : cleanName
+    }
+
+    var hasLocationName: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var hasSelectedCoordinate: Bool {
+        selectedCoordinate != nil
+    }
+
+    var canConfirmSelection: Bool {
+        hasLocationName &&
+        hasSelectedCoordinate &&
+        !isResolvingCurrentLocation &&
+        !isResolvingSearchResult
+    }
+
     var coordinateSummary: String {
         guard let selectedCoordinate else {
             return "No coordinates selected yet."

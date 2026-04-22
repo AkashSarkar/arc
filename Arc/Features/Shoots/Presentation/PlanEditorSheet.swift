@@ -47,7 +47,7 @@ struct PlanEditorSheet: View {
                 Section {
                     ArcCompactHeroHeader(
                         systemImage: "slider.horizontal.3",
-                        title: "Edit Plan",
+                        title: "Edit Capture Plan",
                         summary: location.name
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
@@ -86,7 +86,7 @@ struct PlanEditorSheet: View {
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
             .background(ArcSceneBackground())
-            .navigationTitle("Plan")
+            .navigationTitle("Capture Plan")
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: viewModel.shootStartTime) { _, _ in
                 viewModel.ensureDefaultWindowTimes()
@@ -125,13 +125,13 @@ struct PlanEditorSheet: View {
             ArcFeatureCard(accent: ArcPalette.glowPrimary) {
                 ArcFeatureTitle(
                     systemImage: "checklist",
-                    title: "Checklist",
+                    title: "Shot List",
                     subtitle: planItems.isEmpty ? "No items are saved yet." : "\(planItems.count) live items",
                     accent: ArcPalette.glowPrimary
                 )
 
                 if planItems.isEmpty {
-                    Text("Regenerate the plan to create a field checklist.")
+                    Text("Regenerate the plan to create a field-ready shot list.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
@@ -187,7 +187,7 @@ struct PlanEditorSheet: View {
                                 .controlSize(.small)
                         }
 
-                        Text(viewModel.isLoading ? "Regenerating..." : "Regenerate Checklist")
+                        Text(viewModel.isLoading ? "Regenerating..." : "Regenerate Shot List")
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -310,7 +310,7 @@ struct PlanEditorSheet: View {
             return "Cached \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened)). Regeneration will use landmarks, weather, references, and sun/moon timing."
         }
 
-        return "Fetch landmarks, weather, references, and sun/moon timing before regenerating this checklist."
+        return "Fetch landmarks, weather, references, and sun/moon timing before regenerating this shot list."
     }
 
     private func refreshContext() async {
@@ -425,7 +425,7 @@ private enum PlanEditorSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .checklist:
-            return "Checklist"
+            return "Shot List"
         case .regenerate:
             return "Regenerate"
         case .context:

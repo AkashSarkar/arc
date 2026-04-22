@@ -130,7 +130,7 @@ struct FieldView: View {
                 fieldActionBar
             }
         }
-        .navigationTitle("Field")
+        .navigationTitle("Capture Plan")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -142,14 +142,14 @@ struct FieldView: View {
                 } label: {
                     Image(systemName: isHighContrastMode ? "sun.max.fill" : "sun.max")
                 }
-                .accessibilityLabel(isHighContrastMode ? "Disable high contrast field mode" : "Enable high contrast field mode")
+                .accessibilityLabel(isHighContrastMode ? "Disable high contrast mode" : "Enable high contrast mode")
 
                 Button {
                     isPresentingInfo = true
                 } label: {
                     Image(systemName: "info.circle")
                 }
-                .accessibilityLabel("Shoot info")
+                .accessibilityLabel("Plan info")
 
                 Button {
                     isPresentingPlanEditor = true
@@ -173,14 +173,14 @@ struct FieldView: View {
                     Button {
                         isConfirmingFinish = true
                     } label: {
-                        Label("Finish Shoot", systemImage: "checkmark.seal")
+                        Label("Complete Plan", systemImage: "checkmark.seal")
                     }
                     .disabled(!hasPlanItems)
 
                     Button(role: .destructive) {
                         isConfirmingDelete = true
                     } label: {
-                        Label("Delete Shoot", systemImage: "trash")
+                        Label("Delete Plan", systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -211,25 +211,25 @@ struct FieldView: View {
                 location.longitude = draft.coordinate.longitude
             }
         }
-        .confirmationDialog("Finish this shoot?", isPresented: $isConfirmingFinish, titleVisibility: .visible) {
-            Button("Finish Shoot") {
+        .confirmationDialog("Complete this plan?", isPresented: $isConfirmingFinish, titleVisibility: .visible) {
+            Button("Complete Plan") {
                 finishShoot()
             }
 
             Button("Cancel", role: .cancel) {
             }
         } message: {
-            Text("The shoot will move to Completed. You can reopen it later.")
+            Text("The capture plan will move to Completed. You can reopen it later.")
         }
-        .confirmationDialog("Delete this shoot?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
-            Button("Delete Shoot", role: .destructive) {
+        .confirmationDialog("Delete this plan?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("Delete Plan", role: .destructive) {
                 deleteShoot()
             }
 
             Button("Cancel", role: .cancel) {
             }
         } message: {
-            Text("This removes the location, plan, and checklist.")
+            Text("This removes the location, capture plan, and shot list.")
         }
         .task(id: location.enrichmentJSON) {
             cacheStatus = referenceImageCache.cacheStatus(for: location)
@@ -259,8 +259,8 @@ struct FieldView: View {
         if shouldShowCompletionPrompt {
             ArcBottomActionBar(
                 title: "All shots captured",
-                subtitle: "Finish to move this shoot to Completed.",
-                primaryTitle: "Finish Shoot",
+                subtitle: "Complete to move this plan to Completed.",
+                primaryTitle: "Complete Plan",
                 primarySystemImage: "checkmark.seal",
                 secondaryTitle: "Keep Open",
                 secondarySystemImage: "xmark",
@@ -270,9 +270,9 @@ struct FieldView: View {
             )
         } else if nextPendingItem == nil {
             ArcBottomActionBar(
-                title: "Checklist wrapped",
+                title: "Shot list wrapped",
                 subtitle: "\(completedCount)/\(planItems.count) captured.",
-                primaryTitle: "Finish Shoot",
+                primaryTitle: "Complete Plan",
                 primarySystemImage: "checkmark.seal",
                 secondaryTitle: "Reset",
                 secondarySystemImage: "arrow.counterclockwise",
@@ -454,7 +454,7 @@ private struct FieldExecutionHeader: View {
 
     private var summary: String {
         guard let plan else {
-            return "No active checklist"
+            return "No active shot list"
         }
 
         return "\(plan.outputIntent.title) • \(plan.shootWindowSummary)"
@@ -503,7 +503,7 @@ private struct FieldChecklistCard: View {
         VStack(alignment: .leading, spacing: 16) {
             ArcFeatureTitle(
                 systemImage: "checklist",
-                title: "Checklist",
+                title: "Shot List",
                 subtitle: nil,
                 accent: ArcPalette.tint
             )
@@ -552,7 +552,7 @@ private struct FieldGuidanceCard: View {
             FieldGuidanceRow(
                 systemImage: "sparkles.rectangle.stack",
                 title: "Stay on brief",
-                subtitle: "Keep the \(outputIntentTitle) set coherent while shooting \(location.name)."
+                subtitle: "Keep the \(outputIntentTitle) set coherent while capturing \(location.name)."
             )
 
             FieldGuidanceRow(
@@ -587,12 +587,12 @@ private struct FieldPlanRequiredCard: View {
         ArcFeatureCard(accent: ArcPalette.glowPrimary) {
             ArcFeatureTitle(
                 systemImage: "checklist",
-                title: "No active checklist",
+                title: "No active shot list",
                 subtitle: nil,
                 accent: ArcPalette.glowPrimary
             )
 
-            Text("Start a new shoot from the Shoots screen to generate and approve a field checklist.")
+            Text("Start a new capture plan from Capture Plans to generate a field-ready shot list.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -621,7 +621,7 @@ private struct FieldProgressSection: View {
 
             FieldProgressBar(progress: progress)
 
-            Label(nextPendingTitle ?? "Checklist wrapped", systemImage: "camera.metering.center.weighted.average")
+            Label(nextPendingTitle ?? "Shot list wrapped", systemImage: "camera.metering.center.weighted.average")
                 .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

@@ -49,7 +49,7 @@ struct ShootsView: View {
             Section {
                 ArcHeroHeader(
                     systemImage: "camera.aperture",
-                    title: "Shoots",
+                    title: "Capture Plans",
                     subtitle: rootSubtitle,
                     badges: heroBadges
                 )
@@ -137,7 +137,7 @@ struct ShootsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(ArcSceneBackground())
-        .navigationTitle("Shoots")
+        .navigationTitle("Capture Plans")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
@@ -154,7 +154,7 @@ struct ShootsView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("New shoot")
+                .accessibilityLabel("New capture plan")
             }
         }
         .sheet(isPresented: $isPresentingNewShoot) {
@@ -193,10 +193,10 @@ struct ShootsView: View {
         }
 
         if !activeShoots.isEmpty {
-            return "Open an active checklist and keep the field workflow moving."
+            return "Open an active capture plan and keep the shot list moving."
         }
 
-        return "Create a shoot plan, then execute the checklist in field mode."
+        return "Create a capture plan, then work the shot list in the field."
     }
 
     @ViewBuilder
@@ -206,14 +206,14 @@ struct ShootsView: View {
             ArcFeatureCard(accent: ArcPalette.tint) {
                 ArcFeatureTitle(
                     systemImage: "plus.circle",
-                    title: "Start your first shoot",
-                    subtitle: "Pick a place, generate a plan, and land directly on the checklist."
+                    title: "Start your first capture plan",
+                    subtitle: "Pick a place, generate a plan, and land directly on the shot list."
                 )
 
                 Button {
                     isPresentingNewShoot = true
                 } label: {
-                    Text("New Shoot")
+                    Text("New Capture Plan")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glassProminent)
@@ -222,8 +222,8 @@ struct ShootsView: View {
             ArcFeatureCard(accent: ArcPalette.glowSecondary) {
                 ArcFeatureTitle(
                     systemImage: "archivebox",
-                    title: "No completed shoots yet",
-                    subtitle: "Finished field checklists will appear here."
+                    title: "No completed plans yet",
+                    subtitle: "Completed shot lists will appear here."
                 )
             }
         }
@@ -294,7 +294,7 @@ private struct ShootsSegmentControl: View {
                 .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Shoot status")
+        .accessibilityLabel("Capture plan status")
     }
 
     private func segmentButton(_ segment: ShootSegment, count: Int) -> some View {
@@ -362,7 +362,7 @@ private struct ShootsActiveRow: View {
             return next.title
         }
 
-        return "Ready to finish"
+        return "Ready to complete"
     }
 
     var body: some View {
@@ -439,6 +439,6 @@ private struct ShootsCompletedRow: View {
             return "Completed"
         }
 
-        return "Finished \(completedAt.formatted(date: .abbreviated, time: .shortened))"
+        return "Completed \(completedAt.formatted(date: .abbreviated, time: .shortened))"
     }
 }

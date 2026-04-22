@@ -101,24 +101,24 @@ struct CompletedShootView: View {
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
-                .accessibilityLabel("Reopen shoot")
+                .accessibilityLabel("Reopen plan")
 
                 Button(role: .destructive) {
                     isConfirmingDelete = true
                 } label: {
                     Image(systemName: "trash")
                 }
-                .accessibilityLabel("Delete shoot")
+                .accessibilityLabel("Delete plan")
             }
         }
-        .confirmationDialog("Delete this shoot?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
-            Button("Delete Shoot", role: .destructive) {
+        .confirmationDialog("Delete this plan?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("Delete Plan", role: .destructive) {
                 deleteShoot()
             }
             Button("Cancel", role: .cancel) {
             }
         } message: {
-            Text("This removes the location, plan, and checklist.")
+            Text("This removes the location, capture plan, and shot list.")
         }
     }
 
@@ -241,7 +241,7 @@ private enum CompletedShootSection: String, CaseIterable, Identifiable {
     var emptyMessage: String {
         switch self {
         case .captured:
-            return "Reopen this shoot to continue field work."
+            return "Reopen this plan to continue field work."
         case .missing:
             return "Everything planned was captured."
         }

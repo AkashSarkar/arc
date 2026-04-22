@@ -59,7 +59,7 @@ final class LocationEditorViewModel {
 
     var selectionTitle: String {
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleanName.isEmpty ? "Unnamed shoot spot" : cleanName
+        return cleanName.isEmpty ? "Unnamed location" : cleanName
     }
 
     var hasLocationName: Bool {

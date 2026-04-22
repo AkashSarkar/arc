@@ -187,7 +187,7 @@ struct ShootSpotPickerView: View {
                 accent: ArcPalette.tint
             )
 
-            editorTextField("Shoot spot name", text: $viewModel.name)
+            editorTextField("Location name", text: $viewModel.name)
                 .textInputAutocapitalization(.words)
 
             Label(viewModel.coordinateSummary, systemImage: "location.north.line")

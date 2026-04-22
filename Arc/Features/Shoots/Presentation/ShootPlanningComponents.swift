@@ -60,17 +60,30 @@ struct ShootPlanningControls: View {
 
 struct ShootNotesEditor: View {
     @Binding var notes: String
+    var placeholder = "Mood, constraints, must-get shots, or anything the model should respect."
 
     var body: some View {
-        TextEditor(text: $notes)
-            .scrollContentBackground(.hidden)
-            .frame(minHeight: 150)
-            .padding(12)
-            .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        ZStack(alignment: .topLeading) {
+            if notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(placeholder)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 17)
+                    .padding(.vertical, 20)
+                    .allowsHitTesting(false)
             }
+
+            TextEditor(text: $notes)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 150)
+                .padding(12)
+                .accessibilityLabel("Notes")
+        }
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
     }
 }
 

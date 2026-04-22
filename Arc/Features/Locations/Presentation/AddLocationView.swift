@@ -28,8 +28,8 @@ struct LocationEditorView: View {
             ShootSpotPickerView(
                 viewModel: viewModel,
                 systemImage: viewModel.isEditing ? "slider.horizontal.3" : "location.viewfinder",
-                title: viewModel.isEditing ? "Edit Shoot Spot" : "Choose Shoot Spot",
-                subtitle: "We start from your current GPS location when available. Search or drag the map until the pin sits on the exact place you will shoot.",
+                title: viewModel.isEditing ? "Edit Location" : "Choose Location",
+                subtitle: "We start from your current GPS location when available. Search or drag the map until the pin sits on the exact place you want to capture.",
                 badges: [
                     ArcHeroBadge(label: "Auto GPS", systemImage: "location.fill"),
                     ArcHeroBadge(label: "Search", systemImage: "magnifyingglass"),

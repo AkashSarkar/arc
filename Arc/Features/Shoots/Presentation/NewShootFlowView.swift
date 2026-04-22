@@ -65,7 +65,7 @@ struct NewShootFlowView: View {
                     wizardForm
                 }
             }
-            .navigationTitle("New Shoot")
+            .navigationTitle("New Capture Plan")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(isGenerating || isCommitting)
             .toolbar {
@@ -139,7 +139,46 @@ struct NewShootFlowView: View {
     }
 
     private var stepProgressSummary: String {
-        "\(step.rawValue + 1) of \(NewShootStep.allCases.count)"
+        "\(step.rawValue + 1) of \(NewShootStep.allCases.count) - \(step.subtitle)"
+    }
+
+    private var isCaptureWindowValid: Bool {
+        guard shootWindowMode == .custom else {
+            return true
+        }
+
+        let window = customShootWindow()
+        return window.end > window.start
+    }
+
+    private var framingValidationMessage: String? {
+        isCaptureWindowValid ? nil : "End time must be after start time."
+    }
+
+    private var setupSummaryPills: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ArcStatusPill(locationDraft?.name ?? "Location", systemImage: "mappin.and.ellipse")
+                ArcStatusPill(outputIntent.title, systemImage: "square.stack.3d.up")
+                ArcStatusPill(shootWindowMode.title, systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
+            }
+        }
+    }
+
+    private var generationTitle: String {
+        if isGenerating {
+            return "Generating"
+        }
+
+        return errorMessage == nil ? "Ready to Generate" : "Could Not Generate"
+    }
+
+    private var generationSubtitle: String {
+        if isGenerating {
+            return "Fetching context and building a field-ready shot list."
+        }
+
+        return errorMessage == nil ? "Ready when you are." : "Retry or adjust the setup."
     }
 
     @ViewBuilder
@@ -164,7 +203,7 @@ struct NewShootFlowView: View {
                 ArcFeatureTitle(
                     systemImage: "slider.horizontal.3",
                     title: "Framing",
-                    subtitle: "Choose the output and shoot window before generating the checklist."
+                    subtitle: "Choose the output and capture window before generating the shot list."
                 )
 
                 ShootPlanningControls(
@@ -174,6 +213,10 @@ struct NewShootFlowView: View {
                     shootStartTime: $shootStartTime,
                     shootEndTime: $shootEndTime
                 )
+
+                if let framingValidationMessage {
+                    ArcInlineError(message: framingValidationMessage)
+                }
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             .listRowBackground(Color.clear)
@@ -190,6 +233,7 @@ struct NewShootFlowView: View {
                     subtitle: "Optional creative direction, constraints, or shots you already know you need."
                 )
 
+                setupSummaryPills
                 ShootNotesEditor(notes: $notes)
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -203,9 +247,11 @@ struct NewShootFlowView: View {
             ArcFeatureCard(accent: ArcPalette.tint) {
                 ArcFeatureTitle(
                     systemImage: "sparkles.rectangle.stack",
-                    title: isGenerating ? "Generating" : "Generation Paused",
-                    subtitle: isGenerating ? "Fetching context and building a field-ready checklist." : "Try again when you are ready."
+                    title: generationTitle,
+                    subtitle: generationSubtitle
                 )
+
+                setupSummaryPills
 
                 if isGenerating {
                     ArcInlinePanel {
@@ -232,8 +278,8 @@ struct NewShootFlowView: View {
             ArcFeatureCard(accent: ArcPalette.tint) {
                 ArcFeatureTitle(
                     systemImage: "checklist",
-                    title: "Review Draft",
-                    subtitle: draftItems.isEmpty ? "Regenerate if the response did not produce checklist items." : "\(draftItems.count) checklist items ready."
+                    title: "Review Shot List",
+                    subtitle: draftItems.isEmpty ? "Regenerate if the response did not produce shot list items." : "\(draftItems.count) shots ready."
                 )
 
                 if draftItems.isEmpty {
@@ -290,22 +336,22 @@ struct NewShootFlowView: View {
             EmptyView()
         case .framing:
             ArcBottomActionBar(
-                title: locationDraft?.name ?? "Shoot setup",
+                title: locationDraft?.name ?? "Capture plan setup",
                 subtitle: "\(outputIntent.title) • \(shootWindowMode.title)",
                 primaryTitle: "Next",
                 primarySystemImage: "arrow.right",
-                isPrimaryDisabled: isGenerating || isCommitting,
+                isPrimaryDisabled: isGenerating || isCommitting || !isCaptureWindowValid,
                 secondaryTitle: "Back",
                 secondarySystemImage: "chevron.left",
                 isSecondaryDisabled: isGenerating || isCommitting,
-                primaryAction: { step = .notes },
-                secondaryAction: { step = .location }
+                primaryAction: { move(to: .notes) },
+                secondaryAction: { move(to: .location) }
             )
         case .notes:
             ArcBottomActionBar(
                 title: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Notes are optional" : "Notes added",
                 subtitle: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Generate with context only." : "Arc will use these details.",
-                primaryTitle: "Generate Plan",
+                primaryTitle: "Generate Shot List",
                 primarySystemImage: "sparkles",
                 isPrimaryLoading: isGenerating,
                 isPrimaryDisabled: isGenerating || isCommitting,
@@ -315,13 +361,13 @@ struct NewShootFlowView: View {
                 primaryAction: {
                     Task { await generateDraft() }
                 },
-                secondaryAction: { step = .framing }
+                secondaryAction: { move(to: .framing) }
             )
         case .generate:
             if !isGenerating {
                 ArcBottomActionBar(
-                    title: "Generation paused",
-                    subtitle: "Retry or step back to adjust the setup.",
+                    title: errorMessage == nil ? "Ready to generate" : "Generation stopped",
+                    subtitle: errorMessage == nil ? "Start again with the same setup." : "Retry or adjust the setup.",
                     primaryTitle: "Retry",
                     primarySystemImage: "arrow.clockwise",
                     isPrimaryDisabled: isCommitting,
@@ -331,14 +377,14 @@ struct NewShootFlowView: View {
                     primaryAction: {
                         Task { await generateDraft() }
                     },
-                    secondaryAction: { step = .notes }
+                    secondaryAction: { move(to: .notes) }
                 )
             }
         case .review:
             ArcBottomActionBar(
-                title: draftItems.isEmpty ? "No checklist yet" : "\(draftItems.count) checklist items",
-                subtitle: draftItems.isEmpty ? "Regenerate to try again." : "Use this plan to open Field Mode.",
-                primaryTitle: "Use This Plan",
+                title: draftItems.isEmpty ? "No shot list yet" : "\(draftItems.count) shots ready",
+                subtitle: draftItems.isEmpty ? "Regenerate to try again." : "Start with this shot list.",
+                primaryTitle: "Start Capture Plan",
                 primarySystemImage: "checkmark.circle",
                 isPrimaryLoading: isCommitting,
                 isPrimaryDisabled: isCommitting || draftItems.isEmpty,
@@ -348,9 +394,14 @@ struct NewShootFlowView: View {
                 primaryAction: {
                     Task { await commitShoot() }
                 },
-                secondaryAction: { step = .framing }
+                secondaryAction: { move(to: .framing) }
             )
         }
+    }
+
+    private func move(to nextStep: NewShootStep) {
+        errorMessage = nil
+        step = nextStep
     }
 
     private func continueFromLocation() {
@@ -412,7 +463,7 @@ struct NewShootFlowView: View {
 
     private func commitShoot() async {
         guard let locationDraft, !draftItems.isEmpty else {
-            errorMessage = "Generate a draft before starting field mode."
+            errorMessage = "Generate a draft before starting the capture plan."
             return
         }
 
@@ -486,9 +537,9 @@ struct NewShootFlowView: View {
         case .custom:
             let window = customShootWindow()
             guard window.end > window.start else {
-                errorMessage = "End time must be after start time."
-                return nil
-            }
+            errorMessage = "End time must be after start time."
+            return nil
+        }
 
             return ShotListGenerationInput(
                 outputIntent: outputIntent,
@@ -587,7 +638,7 @@ private enum NewShootStep: Int, CaseIterable {
         case .location:
             return "Choose Location"
         case .framing:
-            return "Shape the Shoot"
+            return "Shape the Plan"
         case .notes:
             return "Add Notes"
         case .generate:
@@ -600,15 +651,15 @@ private enum NewShootStep: Int, CaseIterable {
     var subtitle: String {
         switch self {
         case .location:
-            return "Start with the place you are about to shoot."
+            return "Start with the place you want to capture."
         case .framing:
-            return "Pick output, timing, and the checklist shape."
+            return "Pick output, timing, and the shot list shape."
         case .notes:
             return "Add the creative details the model cannot infer."
         case .generate:
-            return "Arc is turning the setup into a field checklist."
+            return "Arc is turning the setup into a field-ready shot list."
         case .review:
-            return "Tighten the checklist before field mode starts."
+            return "Tighten the shot list before capture starts."
         }
     }
 
@@ -640,7 +691,7 @@ private enum ShootGenerationStage {
         case .fetchingContext:
             return "Fetching location context"
         case .buildingChecklist:
-            return "Building the checklist"
+            return "Building the shot list"
         }
     }
 

@@ -33,7 +33,7 @@ struct ShootInfoSheet: View {
                 Section {
                     ArcCompactHeroHeader(
                         systemImage: "info.circle.fill",
-                        title: "Shoot Info",
+                        title: "Plan Info",
                         summary: location.name
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
@@ -177,7 +177,7 @@ struct ShootInfoSheet: View {
 
     private var referenceSubtitle: String {
         guard cacheStatus.totalImages > 0 else {
-            return "No offline reference images cached for this shoot."
+            return "No offline reference images cached for this plan."
         }
 
         return "\(cacheStatus.cachedImages) of \(cacheStatus.totalImages) cached for offline use."

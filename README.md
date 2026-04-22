@@ -19,7 +19,7 @@ Arc is no longer a saved-location catalogue. The redesigned experience is built 
 1. Open Arc and land on `Capture Plans`.
 2. Tap `New Capture Plan`.
 3. Choose a location from current GPS, search, or map pin.
-4. Choose output and timing.
+4. Choose the content type, capture medium, target platform, style, and timing.
 5. Add optional notes.
 6. Generate the shot list. Arc fetches context automatically during generation.
 7. Review and edit the draft shot list.
@@ -37,10 +37,14 @@ Arc is no longer a saved-location catalogue. The redesigned experience is built 
 - OpenAI-compatible AI service with configurable local or cloud profiles.
 - Keychain-backed API key storage.
 - Guided new-plan flow with in-memory draft generation and commit-on-approval.
+- Capture brief controls for content type, photo/video/hybrid medium, target platform, style, and timing.
+- Content types include Photo Carousel, Short Video, Full Travel Vlog, Travel Story Set, B-Roll Package, Portrait Session, Product Editorial, Documentary Sequence, and Single Hero Shot.
+- Style presets include Natural, Cinematic, Minimal, Editorial, Social Reel, and Moody Travel.
 - Field-first shot list execution with progress, high-contrast mode, haptics, and completion confirmation.
-- Plan editor sheet for regeneration, notes, timing, context refresh, and shot edits.
+- Plan editor sheet for brief changes, context refresh, shot edits, and preview-before-replace regeneration.
 - Plan info sheet for location, context, and reference cache status.
 - Completed plan summary with captured and missing shot sections.
+- Shareable completed plan summaries.
 - Optional shot-level image attachment from the photo library. Custom pro camera capture is not part of this core pass.
 
 ## Architecture
@@ -83,7 +87,7 @@ Key boundaries:
 The current persistence model intentionally keeps the existing `Shoot*` type names internally while presenting Capture Plans in the UI.
 
 - `ShootLocation`: persisted location plus optional plan.
-- `ShootPlan`: output intent, timing, notes, raw response, approval state, and `completedAt`.
+- `ShootPlan`: content type, capture medium, target platform, style, timing, notes, raw response, approval state, and `completedAt`.
 - `ShootPlanItem`: ordered shot list item with title, role, guidance, captured state, and optional attached image data.
 - `ShootStatus`: derived status:
   - `draft`: no approved plan.
@@ -140,10 +144,8 @@ Run this golden path after UX or persistence changes:
 Near-term work should strengthen the core Capture Plan loop:
 
 - Dogfood real plans and score output quality for familiar locations.
-- Add style/profile presets for different visual directions.
 - Improve reference-image visibility and cache inspection.
-- Add export/share for completed plan summaries.
-- Add regeneration comparison so users can see what changed.
+- Add regeneration comparison so users can see exactly what changed between current and previewed lists.
 - Add richer shot-level notes and constraints.
 
 Deferred until the core workflow is proven:

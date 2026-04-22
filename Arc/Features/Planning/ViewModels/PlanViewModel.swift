@@ -18,6 +18,9 @@ final class PlanViewModel {
     var cachedReferenceTotal: Int = 0
     var shootWindowMode: ShootWindowMode = .now
     var outputIntent: OutputIntent = .instagramCarousel
+    var captureMedium: CaptureMedium = .photo
+    var targetPlatform: TargetPlatform = .instagram
+    var stylePreset: CaptureStylePreset = .natural
     var shootDate: Date = Date()
     var shootStartTime: Date = Date()
     var shootEndTime: Date = Calendar.current.date(byAdding: .hour, value: 2, to: Date()) ?? Date()
@@ -44,6 +47,9 @@ final class PlanViewModel {
         )
         shootWindowMode = existingPlan.shootWindowMode
         outputIntent = existingPlan.outputIntent
+        captureMedium = existingPlan.captureMedium
+        targetPlatform = existingPlan.targetPlatform
+        stylePreset = existingPlan.stylePreset
         shootDate = existingPlan.shootDate
         shootStartTime = existingPlan.shootStartTime
         shootEndTime = existingPlan.shootEndTime
@@ -84,8 +90,22 @@ final class PlanViewModel {
     }
 
     func generatePlan(for location: ShootLocation, modelContext: ModelContext) async {
-        guard let input = generationInput() else {
+        guard let generationResult = await generatePreview(for: location) else {
             return
+        }
+
+        await applyGeneratedPlan(
+            rawResponse: generationResult.rawResponse,
+            drafts: generationResult.drafts,
+            for: location,
+            modelContext: modelContext,
+            approve: false
+        )
+    }
+
+    func generatePreview(for location: ShootLocation) async -> ShotListGenerationResult? {
+        guard let input = generationInput() else {
+            return nil
         }
 
         isLoading = true
@@ -95,17 +115,42 @@ final class PlanViewModel {
 
         do {
             let generationResult = try await shotListGenerator.generate(for: location, input: input)
+            response = ShotPlanParser.formattedResponse(from: generationResult.drafts, fallback: generationResult.rawResponse)
+            return generationResult
+        } catch {
+            response = ""
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
 
-            persistPlan(
-                for: location,
-                rawResponse: generationResult.rawResponse,
-                drafts: generationResult.drafts,
-                modelContext: modelContext
-            )
+    @discardableResult
+    func applyGeneratedPlan(
+        rawResponse: String,
+        drafts: [PlannedShotDraft],
+        for location: ShootLocation,
+        modelContext: ModelContext,
+        approve: Bool
+    ) async -> Bool {
+        guard !drafts.isEmpty else {
+            errorMessage = "Arc could not create a usable shot list. Try regenerating."
+            return false
+        }
 
+        errorMessage = nil
+
+        persistPlan(
+            for: location,
+            rawResponse: rawResponse,
+            drafts: drafts,
+            approve: approve,
+            modelContext: modelContext
+        )
+
+        do {
             try modelContext.save()
             let cacheResult = await referenceImageCache.cacheReferenceImages(for: location)
-            response = ShotPlanParser.formattedResponse(from: generationResult.drafts, fallback: generationResult.rawResponse)
+            response = ShotPlanParser.formattedResponse(from: drafts, fallback: rawResponse)
 
             if cacheResult.totalImages > 0, cacheResult.cachedImages == 0 {
                 errorMessage = "Plan generated, but reference image caching failed. You may need connectivity for image previews."
@@ -113,10 +158,11 @@ final class PlanViewModel {
 
             cachedReferenceCount = cacheResult.cachedImages
             cachedReferenceTotal = cacheResult.totalImages
-            isDraftApproved = false
+            isDraftApproved = approve
+            return true
         } catch {
-            response = ""
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -152,11 +198,19 @@ final class PlanViewModel {
         cachedReferenceTotal = status.totalImages
     }
 
+    func applyOutputDefaults() {
+        captureMedium = outputIntent.defaultCaptureMedium
+        targetPlatform = outputIntent.defaultTargetPlatform
+    }
+
     private func generationInput() -> ShotListGenerationInput? {
         switch shootWindowMode {
         case .now:
             return ShotListGenerationInput(
                 outputIntent: outputIntent,
+                captureMedium: captureMedium,
+                targetPlatform: targetPlatform,
+                stylePreset: stylePreset,
                 notes: notes,
                 shootWindowMode: .now,
                 shootWindowStart: Date(),
@@ -171,6 +225,9 @@ final class PlanViewModel {
 
             return ShotListGenerationInput(
                 outputIntent: outputIntent,
+                captureMedium: captureMedium,
+                targetPlatform: targetPlatform,
+                stylePreset: stylePreset,
                 notes: notes,
                 shootWindowMode: .custom,
                 shootWindowStart: window.start,
@@ -204,6 +261,7 @@ final class PlanViewModel {
         for location: ShootLocation,
         rawResponse: String,
         drafts: [PlannedShotDraft],
+        approve: Bool,
         modelContext: ModelContext
     ) {
         let cleanNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -218,13 +276,16 @@ final class PlanViewModel {
         plan.notes = cleanNotes
         plan.rawResponse = rawResponse
         plan.outputIntentRawValue = outputIntent.rawValue
+        plan.captureMediumRawValue = captureMedium.rawValue
+        plan.targetPlatformRawValue = targetPlatform.rawValue
+        plan.stylePresetRawValue = stylePreset.rawValue
         plan.shootWindowModeRawValue = shootWindowMode.rawValue
         plan.shootWindowSummary = shootWindowSummary
         plan.shootDate = shootDate
         plan.shootStartTime = shootStartTime
         plan.shootEndTime = shootEndTime
-        plan.isApprovedForField = false
-        plan.approvedAt = nil
+        plan.isApprovedForField = approve
+        plan.approvedAt = approve ? Date() : nil
         plan.completedAt = nil
 
         for existingItem in Array(plan.items) {

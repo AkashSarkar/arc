@@ -389,9 +389,13 @@ private struct ShootsActiveRow: View {
                 FieldProgressBar(progress: plan.completionProgress)
                     .frame(height: 7)
 
-                HStack(spacing: 8) {
-                    ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
-                    ArcStatusPill(plan.shootWindowMode.title, systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
+                        ArcStatusPill(plan.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
+                        ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
+                        ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
+                    }
                 }
             }
         }
@@ -426,9 +430,13 @@ private struct ShootsCompletedRow: View {
             }
 
             if let plan {
-                HStack(spacing: 8) {
-                    ArcStatusPill("\(plan.capturedCount)/\(plan.items.count)", systemImage: "checkmark.circle", tint: ArcPalette.tint)
-                    ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up", tint: ArcPalette.glowSecondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ArcStatusPill("\(plan.capturedCount)/\(plan.items.count)", systemImage: "checkmark.circle", tint: ArcPalette.tint)
+                        ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up", tint: ArcPalette.glowSecondary)
+                        ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.tint)
+                        ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowPrimary)
+                    }
                 }
             }
         }

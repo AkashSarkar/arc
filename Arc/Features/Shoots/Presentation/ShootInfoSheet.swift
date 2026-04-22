@@ -154,9 +154,14 @@ struct ShootInfoSheet: View {
                 )
 
                 if let plan {
-                    HStack(spacing: 8) {
-                        ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
-                        ArcStatusPill(plan.shootWindowSummary, systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
+                            ArcStatusPill(plan.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
+                            ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
+                            ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
+                            ArcStatusPill(plan.shootWindowSummary, systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
+                        }
                     }
                 }
             }

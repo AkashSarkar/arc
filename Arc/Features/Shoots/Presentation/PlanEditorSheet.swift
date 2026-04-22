@@ -14,6 +14,9 @@ struct PlanEditorSheet: View {
     @State private var isRefreshingContext = false
     @State private var contextRefreshError: String?
     @State private var editingItem: ShootPlanItem?
+    @State private var pendingRegenerationDrafts: [ShootDraftItem] = []
+    @State private var pendingRegenerationRawResponse = ""
+    @State private var isApplyingRegeneration = false
     @State private var editTitle = ""
     @State private var editRole = ""
     @State private var editGuidance = ""
@@ -90,6 +93,32 @@ struct PlanEditorSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: viewModel.shootStartTime) { _, _ in
                 viewModel.ensureDefaultWindowTimes()
+                clearPendingRegeneration()
+            }
+            .onChange(of: viewModel.shootEndTime) { _, _ in
+                clearPendingRegeneration()
+            }
+            .onChange(of: viewModel.shootDate) { _, _ in
+                clearPendingRegeneration()
+            }
+            .onChange(of: viewModel.shootWindowMode) { _, _ in
+                clearPendingRegeneration()
+            }
+            .onChange(of: viewModel.outputIntent) { _, _ in
+                viewModel.applyOutputDefaults()
+                clearPendingRegeneration()
+            }
+            .onChange(of: viewModel.captureMedium) { _, _ in
+                clearPendingRegeneration()
+            }
+            .onChange(of: viewModel.targetPlatform) { _, _ in
+                clearPendingRegeneration()
+            }
+            .onChange(of: viewModel.stylePreset) { _, _ in
+                clearPendingRegeneration()
+            }
+            .onChange(of: viewModel.notes) { _, _ in
+                clearPendingRegeneration()
             }
             .task(id: location.enrichmentJSON) {
                 viewModel.refreshReferenceCacheStatus(for: location)
@@ -154,11 +183,14 @@ struct PlanEditorSheet: View {
                 ArcFeatureTitle(
                     systemImage: "sparkles.rectangle.stack",
                     title: "Regenerate",
-                    subtitle: "\(viewModel.outputIntent.defaultShotCount) shots. \(viewModel.shootWindowSummary)"
+                    subtitle: "\(viewModel.outputIntent.defaultShotCount) shots. \(viewModel.captureMedium.title). \(viewModel.targetPlatform.title)."
                 )
 
                 ShootPlanningControls(
                     outputIntent: $viewModel.outputIntent,
+                    captureMedium: $viewModel.captureMedium,
+                    targetPlatform: $viewModel.targetPlatform,
+                    stylePreset: $viewModel.stylePreset,
                     shootWindowMode: $viewModel.shootWindowMode,
                     shootDate: $viewModel.shootDate,
                     shootStartTime: $viewModel.shootStartTime,
@@ -178,7 +210,7 @@ struct PlanEditorSheet: View {
 
                 Button {
                     Task {
-                        await regeneratePlan()
+                        await generateRegenerationPreview()
                     }
                 } label: {
                     HStack(spacing: 8) {
@@ -187,12 +219,37 @@ struct PlanEditorSheet: View {
                                 .controlSize(.small)
                         }
 
-                        Text(viewModel.isLoading ? "Regenerating..." : "Regenerate Shot List")
+                        Text(viewModel.isLoading ? "Generating Preview..." : "Preview New Shot List")
                             .frame(maxWidth: .infinity)
                     }
                 }
                 .buttonStyle(.glassProminent)
-                .disabled(viewModel.isLoading)
+                .disabled(viewModel.isLoading || isApplyingRegeneration)
+
+                if !pendingRegenerationDrafts.isEmpty {
+                    ArcInlinePanel {
+                        ArcFeatureTitle(
+                            systemImage: "doc.text.magnifyingglass",
+                            title: "Preview Ready",
+                            subtitle: "Current shot list stays unchanged until you replace it.",
+                            accent: ArcPalette.glowSecondary
+                        )
+
+                        ShootDraftPreviewList(items: pendingRegenerationDrafts)
+
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) {
+                                discardPreviewButton
+                                replaceShotListButton
+                            }
+
+                            VStack(spacing: 10) {
+                                discardPreviewButton
+                                replaceShotListButton
+                            }
+                        }
+                    }
+                }
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             .listRowBackground(Color.clear)
@@ -252,6 +309,39 @@ struct PlanEditorSheet: View {
         }
         .buttonStyle(.glass)
         .disabled(isRefreshingContext || viewModel.isLoading)
+    }
+
+    private var discardPreviewButton: some View {
+        Button {
+            clearPendingRegeneration()
+        } label: {
+            Label("Discard Preview", systemImage: "xmark")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
+        .disabled(viewModel.isLoading || isApplyingRegeneration)
+    }
+
+    private var replaceShotListButton: some View {
+        Button {
+            Task {
+                await applyRegenerationPreview()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if isApplyingRegeneration {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                Label("Replace Shot List", systemImage: "checkmark.circle")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(viewModel.isLoading || isApplyingRegeneration || pendingRegenerationDrafts.isEmpty)
     }
 
     @ViewBuilder
@@ -334,21 +424,47 @@ struct PlanEditorSheet: View {
             location.enrichmentJSON = formattedJSON
             location.lastEnrichedAt = bundle.generatedAt
             try modelContext.save()
+            clearPendingRegeneration()
             viewModel.refreshReferenceCacheStatus(for: location)
         } catch {
             contextRefreshError = error.localizedDescription
         }
     }
 
-    private func regeneratePlan() async {
-        await viewModel.generatePlan(for: location, modelContext: modelContext)
-        guard location.plan?.items.isEmpty == false else {
+    private func generateRegenerationPreview() async {
+        guard let generationResult = await viewModel.generatePreview(for: location) else {
             return
         }
 
-        viewModel.approveDraft(for: location, modelContext: modelContext)
-        location.plan?.completedAt = nil
-        try? modelContext.save()
+        pendingRegenerationDrafts = generationResult.drafts.map(ShootDraftItem.init)
+        pendingRegenerationRawResponse = generationResult.rawResponse
+    }
+
+    private func applyRegenerationPreview() async {
+        guard !pendingRegenerationDrafts.isEmpty else {
+            return
+        }
+
+        isApplyingRegeneration = true
+        defer { isApplyingRegeneration = false }
+
+        let didApply = await viewModel.applyGeneratedPlan(
+            rawResponse: pendingRegenerationRawResponse,
+            drafts: pendingRegenerationDrafts.map(\.plannedShotDraft),
+            for: location,
+            modelContext: modelContext,
+            approve: true
+        )
+
+        if didApply {
+            clearPendingRegeneration()
+            selectedSection = .checklist
+        }
+    }
+
+    private func clearPendingRegeneration() {
+        pendingRegenerationDrafts = []
+        pendingRegenerationRawResponse = ""
     }
 
     private func saveExistingPlanMetadata() {
@@ -358,6 +474,9 @@ struct PlanEditorSheet: View {
 
         plan.notes = viewModel.notes.trimmingCharacters(in: .whitespacesAndNewlines)
         plan.outputIntentRawValue = viewModel.outputIntent.rawValue
+        plan.captureMediumRawValue = viewModel.captureMedium.rawValue
+        plan.targetPlatformRawValue = viewModel.targetPlatform.rawValue
+        plan.stylePresetRawValue = viewModel.stylePreset.rawValue
         plan.shootWindowModeRawValue = viewModel.shootWindowMode.rawValue
         plan.shootWindowSummary = viewModel.shootWindowSummary
         plan.shootDate = viewModel.shootDate

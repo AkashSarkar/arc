@@ -8,6 +8,9 @@ final class ShootPlan {
     var notes: String
     var rawResponse: String
     var outputIntentRawValue: String
+    var captureMediumRawValue: String?
+    var targetPlatformRawValue: String?
+    var stylePresetRawValue: String?
     var shootWindowModeRawValue: String
     var shootWindowSummary: String
     var shootDate: Date
@@ -25,6 +28,9 @@ final class ShootPlan {
         notes: String = "",
         rawResponse: String = "",
         outputIntent: OutputIntent = .instagramCarousel,
+        captureMedium: CaptureMedium = .photo,
+        targetPlatform: TargetPlatform = .instagram,
+        stylePreset: CaptureStylePreset = .natural,
         shootWindowMode: ShootWindowMode = .now,
         shootWindowSummary: String = "Use current conditions.",
         shootDate: Date = Date(),
@@ -40,6 +46,9 @@ final class ShootPlan {
         self.notes = notes
         self.rawResponse = rawResponse
         self.outputIntentRawValue = outputIntent.rawValue
+        self.captureMediumRawValue = captureMedium.rawValue
+        self.targetPlatformRawValue = targetPlatform.rawValue
+        self.stylePresetRawValue = stylePreset.rawValue
         self.shootWindowModeRawValue = shootWindowMode.rawValue
         self.shootWindowSummary = shootWindowSummary
         self.shootDate = shootDate
@@ -53,7 +62,19 @@ final class ShootPlan {
     }
 
     var outputIntent: OutputIntent {
-        OutputIntent(rawValue: outputIntentRawValue) ?? .instagramCarousel
+        OutputIntent(storedValue: outputIntentRawValue)
+    }
+
+    var captureMedium: CaptureMedium {
+        CaptureMedium(rawValue: captureMediumRawValue ?? "") ?? outputIntent.defaultCaptureMedium
+    }
+
+    var targetPlatform: TargetPlatform {
+        TargetPlatform(rawValue: targetPlatformRawValue ?? "") ?? outputIntent.defaultTargetPlatform
+    }
+
+    var stylePreset: CaptureStylePreset {
+        CaptureStylePreset(rawValue: stylePresetRawValue ?? "") ?? .natural
     }
 
     var shootWindowMode: ShootWindowMode {

@@ -2,6 +2,9 @@ import SwiftUI
 
 struct ShootPlanningControls: View {
     @Binding var outputIntent: OutputIntent
+    @Binding var captureMedium: CaptureMedium
+    @Binding var targetPlatform: TargetPlatform
+    @Binding var stylePreset: CaptureStylePreset
     @Binding var shootWindowMode: ShootWindowMode
     @Binding var shootDate: Date
     @Binding var shootStartTime: Date
@@ -13,9 +16,55 @@ struct ShootPlanningControls: View {
                 HStack(spacing: 10) {
                     ShootPlanFilterMenu(
                         systemImage: "square.stack.3d.up",
-                        title: "Output",
+                        title: "Content",
                         selection: $outputIntent,
                         options: OutputIntent.allCases,
+                        optionTitle: \.title
+                    )
+
+                    ShootPlanFilterMenu(
+                        systemImage: "camera",
+                        title: "Capture",
+                        selection: $captureMedium,
+                        options: CaptureMedium.allCases,
+                        optionTitle: \.title
+                    )
+                }
+
+                VStack(spacing: 10) {
+                    ShootPlanFilterMenu(
+                        systemImage: "square.stack.3d.up",
+                        title: "Content",
+                        selection: $outputIntent,
+                        options: OutputIntent.allCases,
+                        optionTitle: \.title
+                    )
+
+                    ShootPlanFilterMenu(
+                        systemImage: "camera",
+                        title: "Capture",
+                        selection: $captureMedium,
+                        options: CaptureMedium.allCases,
+                        optionTitle: \.title
+                    )
+                }
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    ShootPlanFilterMenu(
+                        systemImage: "paperplane",
+                        title: "Platform",
+                        selection: $targetPlatform,
+                        options: TargetPlatform.allCases,
+                        optionTitle: \.title
+                    )
+
+                    ShootPlanFilterMenu(
+                        systemImage: "camera.filters",
+                        title: "Style",
+                        selection: $stylePreset,
+                        options: CaptureStylePreset.allCases,
                         optionTitle: \.title
                     )
 
@@ -30,10 +79,18 @@ struct ShootPlanningControls: View {
 
                 VStack(spacing: 10) {
                     ShootPlanFilterMenu(
-                        systemImage: "square.stack.3d.up",
-                        title: "Output",
-                        selection: $outputIntent,
-                        options: OutputIntent.allCases,
+                        systemImage: "paperplane",
+                        title: "Platform",
+                        selection: $targetPlatform,
+                        options: TargetPlatform.allCases,
+                        optionTitle: \.title
+                    )
+
+                    ShootPlanFilterMenu(
+                        systemImage: "camera.filters",
+                        title: "Style",
+                        selection: $stylePreset,
+                        options: CaptureStylePreset.allCases,
                         optionTitle: \.title
                     )
 
@@ -129,13 +186,32 @@ struct ShootPlanItemList: View {
     }
 }
 
+struct ShootDraftPreviewList: View {
+    let items: [ShootDraftItem]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                ShootDraftRow(
+                    sequenceNumber: index + 1,
+                    title: item.title,
+                    role: item.role,
+                    guidance: item.guidance,
+                    onEdit: nil,
+                    onDelete: nil
+                )
+            }
+        }
+    }
+}
+
 struct ShootDraftRow: View {
     let sequenceNumber: Int
     let title: String
     let role: String
     let guidance: String
-    let onEdit: () -> Void
-    let onDelete: () -> Void
+    let onEdit: (() -> Void)?
+    let onDelete: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -165,11 +241,18 @@ struct ShootDraftRow: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
-                Button("Edit", action: onEdit)
-                    .buttonStyle(.glass)
-                Button("Delete", role: .destructive, action: onDelete)
-                    .buttonStyle(.glass)
+            if onEdit != nil || onDelete != nil {
+                HStack(spacing: 8) {
+                    if let onEdit {
+                        Button("Edit", action: onEdit)
+                            .buttonStyle(.glass)
+                    }
+
+                    if let onDelete {
+                        Button("Delete", role: .destructive, action: onDelete)
+                            .buttonStyle(.glass)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

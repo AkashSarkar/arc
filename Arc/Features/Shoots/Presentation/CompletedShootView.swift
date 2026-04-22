@@ -96,6 +96,11 @@ struct CompletedShootView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                ShareLink(item: completedExportText) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share summary")
+
                 Button {
                     reopen()
                 } label: {
@@ -141,6 +146,47 @@ struct CompletedShootView: View {
         }
 
         return "\(plan.capturedCount)/\(planItems.count) captured"
+    }
+
+    private var completedExportText: String {
+        guard let plan else {
+            return "\(location.name)\nCompleted Capture Plan"
+        }
+
+        var sections: [String] = []
+        sections.append("Arc Capture Plan")
+        sections.append(location.name)
+        sections.append("Content: \(plan.outputIntent.title)")
+        sections.append("Capture: \(plan.captureMedium.title)")
+        sections.append("Platform: \(plan.targetPlatform.title)")
+        sections.append("Style: \(plan.stylePreset.title)")
+        sections.append("Timing: \(plan.shootWindowSummary)")
+
+        if let completedAt = plan.completedAt {
+            sections.append("Completed: \(completedAt.formatted(date: .abbreviated, time: .shortened))")
+        }
+
+        sections.append("Coverage: \(plan.capturedCount)/\(planItems.count) captured")
+
+        if !capturedItems.isEmpty {
+            sections.append(
+                (["Captured"] + capturedItems.map(itemExportLine))
+                    .joined(separator: "\n")
+            )
+        }
+
+        if !missingItems.isEmpty {
+            sections.append(
+                (["Missing"] + missingItems.map(itemExportLine))
+                    .joined(separator: "\n")
+            )
+        }
+
+        return sections.joined(separator: "\n\n")
+    }
+
+    private func itemExportLine(_ item: ShootPlanItem) -> String {
+        "- \(item.title) (\(item.role)): \(item.guidance)"
     }
 
     private func reopen() {

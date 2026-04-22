@@ -14,6 +14,9 @@ struct NewShootFlowView: View {
     @State private var step: NewShootStep = .location
     @State private var locationDraft: LocationDraftValue?
     @State private var outputIntent: OutputIntent = .instagramCarousel
+    @State private var captureMedium: CaptureMedium = .photo
+    @State private var targetPlatform: TargetPlatform = .instagram
+    @State private var stylePreset: CaptureStylePreset = .natural
     @State private var shootWindowMode: ShootWindowMode = .now
     @State private var shootDate: Date = Date()
     @State private var shootStartTime: Date = Date()
@@ -78,6 +81,10 @@ struct NewShootFlowView: View {
             }
             .sheet(item: $editingDraft) { _ in
                 draftEditSheet
+            }
+            .onChange(of: outputIntent) { _, newValue in
+                captureMedium = newValue.defaultCaptureMedium
+                targetPlatform = newValue.defaultTargetPlatform
             }
         }
     }
@@ -160,7 +167,10 @@ struct NewShootFlowView: View {
             HStack(spacing: 8) {
                 ArcStatusPill(locationDraft?.name ?? "Location", systemImage: "mappin.and.ellipse")
                 ArcStatusPill(outputIntent.title, systemImage: "square.stack.3d.up")
-                ArcStatusPill(shootWindowMode.title, systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
+                ArcStatusPill(captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
+                ArcStatusPill(targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
+                ArcStatusPill(stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
+                ArcStatusPill(shootWindowMode.title, systemImage: "calendar.badge.clock", tint: ArcPalette.glowSecondary)
             }
         }
     }
@@ -208,6 +218,9 @@ struct NewShootFlowView: View {
 
                 ShootPlanningControls(
                     outputIntent: $outputIntent,
+                    captureMedium: $captureMedium,
+                    targetPlatform: $targetPlatform,
+                    stylePreset: $stylePreset,
                     shootWindowMode: $shootWindowMode,
                     shootDate: $shootDate,
                     shootStartTime: $shootStartTime,
@@ -337,7 +350,7 @@ struct NewShootFlowView: View {
         case .framing:
             ArcBottomActionBar(
                 title: locationDraft?.name ?? "Capture plan setup",
-                subtitle: "\(outputIntent.title) • \(shootWindowMode.title)",
+                subtitle: "\(outputIntent.title) • \(captureMedium.title) • \(targetPlatform.title)",
                 primaryTitle: "Next",
                 primarySystemImage: "arrow.right",
                 isPrimaryDisabled: isGenerating || isCommitting || !isCaptureWindowValid,
@@ -486,6 +499,9 @@ struct NewShootFlowView: View {
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             rawResponse: rawResponse,
             outputIntent: outputIntent,
+            captureMedium: captureMedium,
+            targetPlatform: targetPlatform,
+            stylePreset: stylePreset,
             shootWindowMode: shootWindowMode,
             shootWindowSummary: shootWindowSummary,
             shootDate: shootDate,
@@ -529,6 +545,9 @@ struct NewShootFlowView: View {
         case .now:
             return ShotListGenerationInput(
                 outputIntent: outputIntent,
+                captureMedium: captureMedium,
+                targetPlatform: targetPlatform,
+                stylePreset: stylePreset,
                 notes: notes,
                 shootWindowMode: .now,
                 shootWindowStart: Date(),
@@ -543,6 +562,9 @@ struct NewShootFlowView: View {
 
             return ShotListGenerationInput(
                 outputIntent: outputIntent,
+                captureMedium: captureMedium,
+                targetPlatform: targetPlatform,
+                stylePreset: stylePreset,
                 notes: notes,
                 shootWindowMode: .custom,
                 shootWindowStart: window.start,

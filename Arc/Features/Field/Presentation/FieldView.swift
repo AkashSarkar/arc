@@ -438,10 +438,13 @@ private struct FieldExecutionHeader: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
+                    ArcStatusPill(plan.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
+                    ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
+                    ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
                     ArcStatusPill(plan.shootWindowMode == .now ? "Now" : "Custom", systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
 
                     if let referenceStatus {
-                        ArcStatusPill(referenceStatus, systemImage: "arrow.down.circle", tint: ArcPalette.glowSecondary)
+                        ArcStatusPill(referenceStatus, systemImage: "arrow.down.circle", tint: ArcPalette.tint)
                     }
                 }
             }
@@ -457,7 +460,7 @@ private struct FieldExecutionHeader: View {
             return "No active shot list"
         }
 
-        return "\(plan.outputIntent.title) • \(plan.shootWindowSummary)"
+        return "\(plan.outputIntent.title) • \(plan.captureMedium.title) • \(plan.targetPlatform.title)"
     }
 }
 

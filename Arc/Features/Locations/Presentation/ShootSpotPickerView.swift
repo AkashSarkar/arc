@@ -179,7 +179,7 @@ struct ShootSpotPickerView: View {
     }
 
     private var confirmationCard: some View {
-        ArcFeatureCard(accent: ArcPalette.tint) {
+        ArcDenseCard(accent: ArcPalette.tint) {
             ArcFeatureTitle(
                 systemImage: "checkmark.circle",
                 title: "Confirm spot",
@@ -219,41 +219,24 @@ struct ShootSpotPickerView: View {
     }
 
     private var confirmationBar: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
             if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                ArcInlineError(message: errorMessage)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+                    .background(.regularMaterial)
             }
 
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(viewModel.selectionTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-
-                    Text(viewModel.coordinateSummary)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button {
-                    primaryAction()
-                } label: {
-                    Label(primaryButtonTitle, systemImage: primarySystemImage)
-                        .lineLimit(1)
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(!viewModel.canConfirmSelection)
-            }
+            ArcBottomActionBar(
+                title: viewModel.selectionTitle,
+                subtitle: viewModel.coordinateSummary,
+                primaryTitle: primaryButtonTitle,
+                primarySystemImage: primarySystemImage,
+                isPrimaryDisabled: !viewModel.canConfirmSelection,
+                primaryAction: primaryAction
+            )
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
-        .background(.regularMaterial)
     }
 
     private func editorTextField(_ title: LocalizedStringKey, text: Binding<String>) -> some View {

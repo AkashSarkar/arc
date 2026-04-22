@@ -1,8 +1,8 @@
 import Foundation
 
 struct OpenAICompatibleAIService: AIServicing {
-    private static let defaultSystemPrompt = "You are a precise photography planner. Return only the final answer in message content. Do not include reasoning, scratchpad, or analysis. Keep responses concise and practical."
-    private static let retryTokenCap = 2400
+    private static let defaultSystemPrompt = "You are a precise photography planner. Return only the final answer in message content. Do not include reasoning, scratchpad, or analysis. Keep responses concise and practical. /no_think"
+    private static let retryTokenCap = 8000
 
     private let configuration: AIConfiguration
     private let httpClient: any HTTPClient
@@ -152,7 +152,7 @@ struct OpenAICompatibleAIService: AIServicing {
         return trimmedContent.isEmpty && !trimmedReasoning.isEmpty
     }
 
-    private func retryMaxTokens(for currentValue: Int) -> Int {
-        min(max(currentValue * 2, currentValue + 800), Self.retryTokenCap)
+    private func retryMaxTokens(for _: Int) -> Int {
+        Self.retryTokenCap
     }
 }

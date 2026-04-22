@@ -296,42 +296,32 @@ private struct ShootsActiveRow: View {
     }
 
     var body: some View {
-        ArcFeatureCard(accent: ArcPalette.tint) {
-            HStack(alignment: .top, spacing: 14) {
-                ArcMiniIconBadge(systemImage: "checklist", tint: ArcPalette.tint)
+        ArcDenseCard(accent: ArcPalette.tint) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(location.name)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(location.name)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Text(progressText)
-                            .font(.caption.weight(.semibold))
-                            .monospacedDigit()
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(ArcPalette.tint.opacity(0.14), in: Capsule())
-                            .foregroundStyle(ArcPalette.tint)
-                    }
-
-                    Text(nextTitle)
+                    Label(nextTitle, systemImage: "camera.viewfinder")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                    if let plan {
-                        FieldProgressBar(progress: plan.completionProgress)
-                            .frame(height: 8)
+                ArcStatusPill(progressText, systemImage: "checkmark.circle", tint: ArcPalette.tint)
+                    .monospacedDigit()
+            }
 
-                        HStack(spacing: 8) {
-                            Label(plan.outputIntent.title, systemImage: "square.stack.3d.up")
-                            Label(plan.shootWindowMode.title, systemImage: "calendar.badge.clock")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
+            if let plan {
+                FieldProgressBar(progress: plan.completionProgress)
+                    .frame(height: 7)
+
+                HStack(spacing: 8) {
+                    ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
+                    ArcStatusPill(plan.shootWindowMode.title, systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
                 }
             }
         }
@@ -346,28 +336,29 @@ private struct ShootsCompletedRow: View {
     }
 
     var body: some View {
-        ArcFeatureCard(accent: ArcPalette.glowSecondary) {
-            HStack(alignment: .top, spacing: 14) {
-                ArcMiniIconBadge(systemImage: "checkmark.seal", tint: ArcPalette.glowSecondary)
-
-                VStack(alignment: .leading, spacing: 8) {
+        ArcDenseCard(accent: ArcPalette.glowSecondary) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(location.name)
                         .font(.headline)
                         .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .lineLimit(1)
 
-                    Text(completedSummary)
+                    Label(completedSummary, systemImage: "clock")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                    if let plan {
-                        HStack(spacing: 8) {
-                            Label("\(plan.capturedCount)/\(plan.items.count) captured", systemImage: "checkmark.circle")
-                            Label(plan.outputIntent.title, systemImage: "square.stack.3d.up")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(ArcPalette.glowSecondary)
+            }
+
+            if let plan {
+                HStack(spacing: 8) {
+                    ArcStatusPill("\(plan.capturedCount)/\(plan.items.count)", systemImage: "checkmark.circle", tint: ArcPalette.tint)
+                    ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up", tint: ArcPalette.glowSecondary)
                 }
             }
         }

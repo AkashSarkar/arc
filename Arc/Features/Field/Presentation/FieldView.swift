@@ -71,104 +71,23 @@ struct FieldView: View {
         hasPlanItems && remainingCount == 0 && !hasDismissedCompletionPrompt
     }
 
-    private var heroBadges: [ArcHeroBadge] {
-        guard let plan, hasPlanItems else {
-            return []
-        }
-
-        return [
-            ArcHeroBadge(label: plan.outputIntent.title, systemImage: "square.stack.3d.up"),
-            ArcHeroBadge(
-                label: plan.shootWindowMode == .now ? "Now" : "Custom window",
-                systemImage: "calendar.badge.clock"
-            )
-        ]
-    }
-
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                ArcHeroHeader(
-                    systemImage: "checklist.checked",
-                    title: "Field Mode",
-                    subtitle: hasPlanItems
-                        ? "High contrast, quick decisions, minimal friction."
-                        : "Generate a plan first, then use it as the field checklist.",
-                    badges: heroBadges
-                ) {
-                    FieldLocationContextRow(locationName: location.name)
+            VStack(alignment: .leading, spacing: 12) {
+                FieldExecutionHeader(
+                    locationName: location.name,
+                    plan: plan,
+                    referenceStatus: referenceStatusText
+                )
 
-                    if cacheStatus.totalImages > 0 {
-                        Label(
-                            "Offline references: \(cacheStatus.cachedImages)/\(cacheStatus.totalImages)",
-                            systemImage: "arrow.down.circle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-
-                    if hasPlanItems {
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 12) {
-                                FieldMetricTile(
-                                    title: "Complete",
-                                    value: "\(completedCount)/\(planItems.count)",
-                                    accent: ArcPalette.tint
-                                )
-
-                                FieldMetricTile(
-                                    title: "Remaining",
-                                    value: "\(remainingCount)",
-                                    accent: ArcPalette.glowPrimary
-                                )
-                            }
-
-                            VStack(spacing: 12) {
-                                FieldMetricTile(
-                                    title: "Complete",
-                                    value: "\(completedCount)/\(planItems.count)",
-                                    accent: ArcPalette.tint
-                                )
-
-                                FieldMetricTile(
-                                    title: "Remaining",
-                                    value: "\(remainingCount)",
-                                    accent: ArcPalette.glowPrimary
-                                )
-                            }
-                        }
-
-                        FieldProgressSection(
-                            progress: completionProgress,
-                            nextPendingTitle: nextPendingItem?.title
-                        )
-
-                        HStack(spacing: 12) {
-                            Button(action: completeNextItem) {
-                                Label(nextPendingItem == nil ? "All Done" : "Mark Next", systemImage: "checkmark.circle.fill")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(FieldPrimaryButtonStyle())
-                            .disabled(nextPendingItem == nil)
-
-                            Button(action: resetChecklist) {
-                                Label("Reset", systemImage: "arrow.counterclockwise")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(FieldSecondaryButtonStyle())
-                        }
-
-                        if shouldShowCompletionPrompt {
-                            FieldFinishPrompt(
-                                finishAction: {
-                                    isConfirmingFinish = true
-                                },
-                                dismissAction: {
-                                    hasDismissedCompletionPrompt = true
-                                }
-                            )
-                        }
-                    }
+                if hasPlanItems {
+                    FieldProgressPanel(
+                        completedCount: completedCount,
+                        totalCount: planItems.count,
+                        remainingCount: remainingCount,
+                        progress: completionProgress,
+                        nextPendingTitle: nextPendingItem?.title
+                    )
                 }
 
                 if hasPlanItems {
@@ -187,9 +106,15 @@ struct FieldView: View {
                     FieldPlanRequiredCard()
                 }
             }
-            .padding(20)
+            .padding(16)
+            .padding(.bottom, hasPlanItems ? 112 : 0)
         }
         .background(ArcSceneBackground())
+        .safeAreaInset(edge: .bottom) {
+            if hasPlanItems {
+                fieldActionBar
+            }
+        }
         .navigationTitle("Field")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -282,6 +207,52 @@ struct FieldView: View {
         }
     }
 
+    private var referenceStatusText: String? {
+        guard cacheStatus.totalImages > 0 else {
+            return nil
+        }
+
+        return "References \(cacheStatus.cachedImages)/\(cacheStatus.totalImages)"
+    }
+
+    @ViewBuilder
+    private var fieldActionBar: some View {
+        if shouldShowCompletionPrompt {
+            ArcBottomActionBar(
+                title: "All shots captured",
+                subtitle: "Finish to move this shoot to Completed.",
+                primaryTitle: "Finish Shoot",
+                primarySystemImage: "checkmark.seal",
+                secondaryTitle: "Keep Open",
+                secondarySystemImage: "xmark",
+                primaryAction: { isConfirmingFinish = true },
+                secondaryAction: { hasDismissedCompletionPrompt = true }
+            )
+        } else if nextPendingItem == nil {
+            ArcBottomActionBar(
+                title: "Checklist wrapped",
+                subtitle: "\(completedCount)/\(planItems.count) captured.",
+                primaryTitle: "Finish Shoot",
+                primarySystemImage: "checkmark.seal",
+                secondaryTitle: "Reset",
+                secondarySystemImage: "arrow.counterclockwise",
+                primaryAction: { isConfirmingFinish = true },
+                secondaryAction: resetChecklist
+            )
+        } else {
+            ArcBottomActionBar(
+                title: nextPendingItem?.title ?? "Next shot",
+                subtitle: "\(remainingCount) remaining • \(completionProgress.formatted(.percent.precision(.fractionLength(0)))) complete",
+                primaryTitle: "Mark Next",
+                primarySystemImage: "checkmark.circle.fill",
+                secondaryTitle: "Reset",
+                secondarySystemImage: "arrow.counterclockwise",
+                primaryAction: completeNextItem,
+                secondaryAction: resetChecklist
+            )
+        }
+    }
+
     private func toggleItemCompletion(_ item: ShootPlanItem) {
         withAnimation(.easeInOut(duration: 0.18)) {
             item.isCaptured.toggle()
@@ -328,6 +299,71 @@ struct FieldView: View {
 
     private func saveChanges() {
         try? modelContext.save()
+    }
+}
+
+private struct FieldExecutionHeader: View {
+    let locationName: String
+    let plan: ShootPlan?
+    let referenceStatus: String?
+
+    var body: some View {
+        ArcCompactHeroHeader(
+            systemImage: "checklist.checked",
+            title: locationName,
+            summary: summary,
+            tint: ArcPalette.tint
+        )
+
+        if let plan {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
+                    ArcStatusPill(plan.shootWindowMode == .now ? "Now" : "Custom", systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
+
+                    if let referenceStatus {
+                        ArcStatusPill(referenceStatus, systemImage: "arrow.down.circle", tint: ArcPalette.glowSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var summary: String {
+        guard let plan else {
+            return "No active checklist"
+        }
+
+        return "\(plan.outputIntent.title) • \(plan.shootWindowSummary)"
+    }
+}
+
+private struct FieldProgressPanel: View {
+    let completedCount: Int
+    let totalCount: Int
+    let remainingCount: Int
+    let progress: Double
+    let nextPendingTitle: String?
+
+    var body: some View {
+        ArcDenseCard(accent: ArcPalette.tint) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    ArcMetricTile(title: "Complete", value: "\(completedCount)/\(totalCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
+                    ArcMetricTile(title: "Remaining", value: "\(remainingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
+                }
+
+                VStack(spacing: 10) {
+                    ArcMetricTile(title: "Complete", value: "\(completedCount)/\(totalCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
+                    ArcMetricTile(title: "Remaining", value: "\(remainingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
+                }
+            }
+
+            FieldProgressSection(
+                progress: progress,
+                nextPendingTitle: nextPendingTitle
+            )
+        }
     }
 }
 
@@ -423,108 +459,6 @@ private struct FieldPlanRequiredCard: View {
             Text("Start a new shoot from the Shoots screen to generate and approve a field checklist.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct FieldFinishPrompt: View {
-    let finishAction: () -> Void
-    let dismissAction: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ArcFeatureTitle(
-                systemImage: "checkmark.seal.fill",
-                title: "All shots captured",
-                subtitle: "Finish this shoot to move it to Completed.",
-                accent: ArcPalette.tint
-            )
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    Button(action: finishAction) {
-                        Label("Finish Shoot", systemImage: "checkmark.seal")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(FieldPrimaryButtonStyle())
-
-                    Button("Keep Open", action: dismissAction)
-                        .buttonStyle(FieldSecondaryButtonStyle())
-                }
-
-                VStack(spacing: 10) {
-                    Button(action: finishAction) {
-                        Label("Finish Shoot", systemImage: "checkmark.seal")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(FieldPrimaryButtonStyle())
-
-                    Button("Keep Open", action: dismissAction)
-                        .buttonStyle(FieldSecondaryButtonStyle())
-                }
-            }
-        }
-        .padding(16)
-        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(ArcPalette.tint.opacity(0.45), lineWidth: 1)
-        }
-    }
-}
-
-private struct FieldLocationContextRow: View {
-    let locationName: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "mappin.and.ellipse")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(ArcPalette.tint)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Working at")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text(locationName)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-        }
-    }
-}
-
-private struct FieldMetricTile: View {
-    let title: String
-    let value: String
-    let accent: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-
-            Text(value)
-                .font(.title2.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(accent)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
@@ -645,39 +579,5 @@ struct FieldProgressBar: View {
             }
         }
         .frame(height: 12)
-    }
-}
-
-private struct FieldPrimaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .foregroundStyle(Color.white)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(ArcPalette.tint.opacity(configuration.isPressed ? 0.82 : 1))
-            )
-            .scaleEffect(configuration.isPressed ? 0.99 : 1)
-    }
-}
-
-private struct FieldSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.headline)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-            .foregroundStyle(.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(ArcPalette.elevatedSurface.opacity(configuration.isPressed ? 0.85 : 1))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-            }
-            .scaleEffect(configuration.isPressed ? 0.99 : 1)
     }
 }

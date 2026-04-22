@@ -14,24 +14,13 @@ struct SettingsView: View {
     @State private var isPresentingNewProfile = false
     @State private var errorMessage: String?
 
-    private var heroBadges: [ArcHeroBadge] {
-        var badges = [ArcHeroBadge(label: "\(profiles.count) profiles", systemImage: "switch.2")]
-
-        if let activeProfile = profiles.first(where: \.isActive) {
-            badges.append(ArcHeroBadge(label: activeProfile.name, systemImage: "checkmark.circle.fill"))
-        }
-
-        return badges
-    }
-
     var body: some View {
         List {
             Section {
-                ArcHeroHeader(
+                ArcCompactHeroHeader(
                     systemImage: "gearshape.2.fill",
                     title: "LLM Profiles",
-                    subtitle: "Store local and cloud model endpoints as named profiles, then keep one active for planning.",
-                    badges: heroBadges
+                    summary: settingsSummary
                 )
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)
@@ -130,6 +119,14 @@ struct SettingsView: View {
         }
     }
 
+    private var settingsSummary: String {
+        if let activeProfile = profiles.first(where: \.isActive) {
+            return "\(profiles.count) profiles • \(activeProfile.name) active"
+        }
+
+        return "\(profiles.count) profiles"
+    }
+
     private func hasStoredAPIKey(for profile: LLMProfile) -> Bool {
         guard profile.requiresAPIKey, let account = profile.apiKeyAccount else {
             return false
@@ -220,7 +217,7 @@ private struct SettingsProfileCard: View {
     }
 
     var body: some View {
-        ArcFeatureCard(accent: profile.isActive ? ArcPalette.tint : ArcPalette.glowSecondary) {
+        ArcDenseCard(accent: profile.isActive ? ArcPalette.tint : ArcPalette.glowSecondary) {
             HStack(alignment: .top, spacing: 12) {
                 ArcFeatureTitle(
                     systemImage: profile.isActive ? "checkmark.circle.fill" : "cpu",
@@ -230,49 +227,37 @@ private struct SettingsProfileCard: View {
                 )
 
                 if profile.isActive {
-                    Text("Active")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(ArcPalette.tint.opacity(0.14), in: Capsule())
-                        .foregroundStyle(ArcPalette.tint)
+                    ArcStatusPill("Active", systemImage: "checkmark.circle.fill")
+                }
+
+                Menu {
+                    Button("Edit", action: editAction)
+                    Button("Delete", role: .destructive, action: deleteAction)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                }
+                .accessibilityLabel("Profile actions")
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ArcStatusPill(keyStatusLabel, systemImage: keyStatusImage, tint: keyStatusColor)
+                    ArcStatusPill(
+                        profile.useStructuredOutput ? "JSON on" : "JSON off",
+                        systemImage: profile.useStructuredOutput ? "curlybraces.square.fill" : "curlybraces.square",
+                        tint: ArcPalette.glowSecondary
+                    )
+                    ArcStatusPill("\(Int(profile.timeoutSeconds.rounded()))s", systemImage: "timer", tint: ArcPalette.glowPrimary)
                 }
             }
 
-            HStack(spacing: 12) {
-                Label(keyStatusLabel, systemImage: keyStatusImage)
-                    .font(.caption)
-                    .foregroundStyle(keyStatusColor)
-
-                Label(
-                    profile.useStructuredOutput ? "JSON mode on" : "JSON mode off",
-                    systemImage: profile.useStructuredOutput ? "curlybraces.square.fill" : "curlybraces.square"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-                Label("\(Int(profile.timeoutSeconds.rounded()))s", systemImage: "timer")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 10) {
-                Button(profile.isActive ? "Active" : "Use This Profile") {
+            if !profile.isActive {
+                Button("Use This Profile") {
                     activateAction()
                 }
                 .frame(maxWidth: .infinity)
                 .buttonStyle(.glassProminent)
-                .disabled(profile.isActive)
-
-                Button("Edit") {
-                    editAction()
-                }
-                .buttonStyle(.glass)
-
-                Button("Delete", role: .destructive) {
-                    deleteAction()
-                }
-                .buttonStyle(.glass)
             }
         }
     }
@@ -334,10 +319,10 @@ private struct LLMProfileEditorView: View {
     var body: some View {
         Form {
             Section {
-                ArcHeroHeader(
+                ArcCompactHeroHeader(
                     systemImage: isEditing ? "slider.horizontal.3" : "plus.circle.fill",
                     title: isEditing ? "Edit Profile" : "New Profile",
-                    subtitle: "Define the endpoint, model, and key requirements for one LLM target."
+                    summary: "Endpoint, model, and key settings"
                 )
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)

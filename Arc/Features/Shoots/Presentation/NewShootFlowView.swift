@@ -24,6 +24,7 @@ struct NewShootFlowView: View {
     @State private var generatedLastEnrichedAt: Date?
     @State private var draftItems: [ShootDraftItem] = []
     @State private var errorMessage: String?
+    @State private var generationStage: ShootGenerationStage = .idle
     @State private var isGenerating = false
     @State private var isCommitting = false
     @State private var editingDraft: ShootDraftItem?
@@ -83,12 +84,19 @@ struct NewShootFlowView: View {
 
     private var wizardForm: some View {
         Form {
-            Section {
-                ArcCompactHeroHeader(
-                    systemImage: step.systemImage,
-                    title: step.title,
-                    summary: stepProgressSummary
-                )
+                Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    ArcCompactHeroHeader(
+                        systemImage: step.systemImage,
+                        title: step.title,
+                        summary: stepProgressSummary
+                    )
+
+                    ArcStepProgressBar(
+                        currentIndex: step.rawValue,
+                        totalCount: NewShootStep.allCases.count
+                    )
+                }
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -112,6 +120,9 @@ struct NewShootFlowView: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(ArcSceneBackground())
+        .safeAreaInset(edge: .bottom) {
+            wizardActionBar
+        }
     }
 
     private var locationStepScreen: some View {
@@ -163,13 +174,6 @@ struct NewShootFlowView: View {
                     shootStartTime: $shootStartTime,
                     shootEndTime: $shootEndTime
                 )
-
-                wizardButtons(
-                    backTitle: "Back",
-                    primaryTitle: "Next",
-                    primaryAction: { step = .notes },
-                    backAction: { step = .location }
-                )
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             .listRowBackground(Color.clear)
@@ -187,15 +191,6 @@ struct NewShootFlowView: View {
                 )
 
                 ShootNotesEditor(notes: $notes)
-
-                wizardButtons(
-                    backTitle: "Back",
-                    primaryTitle: "Generate Plan",
-                    primaryAction: {
-                        Task { await generateDraft() }
-                    },
-                    backAction: { step = .framing }
-                )
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             .listRowBackground(Color.clear)
@@ -213,19 +208,17 @@ struct NewShootFlowView: View {
                 )
 
                 if isGenerating {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                    ArcInlinePanel {
+                        Label(generationStage.title, systemImage: generationStage.systemImage)
+                            .font(.subheadline.weight(.semibold))
 
-                if !isGenerating {
-                    wizardButtons(
-                        backTitle: "Back",
-                        primaryTitle: "Retry",
-                        primaryAction: {
-                            Task { await generateDraft() }
-                        },
-                        backAction: { step = .notes }
-                    )
+                        Text(generationStage.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        ProgressView()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -254,52 +247,6 @@ struct NewShootFlowView: View {
                         onEdit: beginEditing,
                         onDelete: deleteDraft
                     )
-                }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        Button("Regenerate") {
-                            step = .framing
-                        }
-                        .buttonStyle(.glass)
-
-                        Button {
-                            Task { await commitShoot() }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if isCommitting {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-                                Text(isCommitting ? "Saving..." : "Use this plan")
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glassProminent)
-                        .disabled(isCommitting || draftItems.isEmpty)
-                    }
-
-                    VStack(spacing: 10) {
-                        Button("Regenerate") {
-                            step = .framing
-                        }
-                        .buttonStyle(.glass)
-
-                        Button {
-                            Task { await commitShoot() }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if isCommitting {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-                                Text(isCommitting ? "Saving..." : "Use this plan")
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glassProminent)
-                        .disabled(isCommitting || draftItems.isEmpty)
-                    }
                 }
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -336,32 +283,73 @@ struct NewShootFlowView: View {
         }
     }
 
-    private func wizardButtons(
-        backTitle: String,
-        primaryTitle: String,
-        primaryAction: @escaping () -> Void,
-        backAction: @escaping () -> Void
-    ) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                Button(backTitle, action: backAction)
-                    .buttonStyle(.glass)
-                    .disabled(isGenerating || isCommitting)
-
-                Button(primaryTitle, action: primaryAction)
-                    .buttonStyle(.glassProminent)
-                    .disabled(isGenerating || isCommitting)
+    @ViewBuilder
+    private var wizardActionBar: some View {
+        switch step {
+        case .location:
+            EmptyView()
+        case .framing:
+            ArcBottomActionBar(
+                title: locationDraft?.name ?? "Shoot setup",
+                subtitle: "\(outputIntent.title) • \(shootWindowMode.title)",
+                primaryTitle: "Next",
+                primarySystemImage: "arrow.right",
+                isPrimaryDisabled: isGenerating || isCommitting,
+                secondaryTitle: "Back",
+                secondarySystemImage: "chevron.left",
+                isSecondaryDisabled: isGenerating || isCommitting,
+                primaryAction: { step = .notes },
+                secondaryAction: { step = .location }
+            )
+        case .notes:
+            ArcBottomActionBar(
+                title: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Notes are optional" : "Notes added",
+                subtitle: notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Generate with context only." : "Arc will use these details.",
+                primaryTitle: "Generate Plan",
+                primarySystemImage: "sparkles",
+                isPrimaryLoading: isGenerating,
+                isPrimaryDisabled: isGenerating || isCommitting,
+                secondaryTitle: "Back",
+                secondarySystemImage: "chevron.left",
+                isSecondaryDisabled: isGenerating || isCommitting,
+                primaryAction: {
+                    Task { await generateDraft() }
+                },
+                secondaryAction: { step = .framing }
+            )
+        case .generate:
+            if !isGenerating {
+                ArcBottomActionBar(
+                    title: "Generation paused",
+                    subtitle: "Retry or step back to adjust the setup.",
+                    primaryTitle: "Retry",
+                    primarySystemImage: "arrow.clockwise",
+                    isPrimaryDisabled: isCommitting,
+                    secondaryTitle: "Back",
+                    secondarySystemImage: "chevron.left",
+                    isSecondaryDisabled: isCommitting,
+                    primaryAction: {
+                        Task { await generateDraft() }
+                    },
+                    secondaryAction: { step = .notes }
+                )
             }
-
-            VStack(spacing: 10) {
-                Button(primaryTitle, action: primaryAction)
-                    .buttonStyle(.glassProminent)
-                    .disabled(isGenerating || isCommitting)
-
-                Button(backTitle, action: backAction)
-                    .buttonStyle(.glass)
-                    .disabled(isGenerating || isCommitting)
-            }
+        case .review:
+            ArcBottomActionBar(
+                title: draftItems.isEmpty ? "No checklist yet" : "\(draftItems.count) checklist items",
+                subtitle: draftItems.isEmpty ? "Regenerate to try again." : "Use this plan to open Field Mode.",
+                primaryTitle: "Use This Plan",
+                primarySystemImage: "checkmark.circle",
+                isPrimaryLoading: isCommitting,
+                isPrimaryDisabled: isCommitting || draftItems.isEmpty,
+                secondaryTitle: "Regenerate",
+                secondarySystemImage: "arrow.counterclockwise",
+                isSecondaryDisabled: isCommitting,
+                primaryAction: {
+                    Task { await commitShoot() }
+                },
+                secondaryAction: { step = .framing }
+            )
         }
     }
 
@@ -384,10 +372,14 @@ struct NewShootFlowView: View {
 
         self.locationDraft = locationDraft
         step = .generate
+        generationStage = .fetchingContext
         isGenerating = true
         errorMessage = nil
 
-        defer { isGenerating = false }
+        defer {
+            isGenerating = false
+            generationStage = .idle
+        }
 
         let transientLocation = ShootLocation(
             name: locationDraft.name,
@@ -407,6 +399,7 @@ struct NewShootFlowView: View {
                 generatedLastEnrichedAt = contextBundle.generatedAt
             }
 
+            generationStage = .buildingChecklist
             let result = try await generator.generate(for: transientLocation, input: input)
             rawResponse = result.rawResponse
             draftItems = result.drafts.map(ShootDraftItem.init)
@@ -630,6 +623,45 @@ private enum NewShootStep: Int, CaseIterable {
         case .generate:
             return "sparkles.rectangle.stack"
         case .review:
+            return "checklist"
+        }
+    }
+}
+
+private enum ShootGenerationStage {
+    case idle
+    case fetchingContext
+    case buildingChecklist
+
+    var title: String {
+        switch self {
+        case .idle:
+            return "Ready"
+        case .fetchingContext:
+            return "Fetching location context"
+        case .buildingChecklist:
+            return "Building the checklist"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .idle:
+            return "Generation is waiting."
+        case .fetchingContext:
+            return "Arc is collecting landmarks, weather, references, and sun timing."
+        case .buildingChecklist:
+            return "Arc is turning the setup into field-ready shots."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .idle:
+            return "pause.circle"
+        case .fetchingContext:
+            return "map.circle"
+        case .buildingChecklist:
             return "checklist"
         }
     }

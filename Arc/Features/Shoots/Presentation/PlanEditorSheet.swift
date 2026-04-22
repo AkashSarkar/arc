@@ -10,6 +10,7 @@ struct PlanEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: PlanViewModel
+    @State private var selectedSection: PlanEditorSection = .checklist
     @State private var isRefreshingContext = false
     @State private var contextRefreshError: String?
     @State private var editingItem: ShootPlanItem?
@@ -55,121 +56,18 @@ struct PlanEditorSheet: View {
                 }
 
                 Section {
-                    ArcFeatureCard(accent: contextAccent) {
-                        ArcFeatureTitle(
-                            systemImage: hasCachedContext ? "checkmark.circle.fill" : "map.circle.fill",
-                            title: hasCachedContext ? "Context ready" : "Fetch context",
-                            subtitle: contextSubtitle,
-                            accent: contextAccent
-                        )
-
-                        if let contextRefreshError {
-                            Text(contextRefreshError)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
-
-                        HStack(spacing: 8) {
-                            Button {
-                                Task {
-                                    await refreshContext()
-                                }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    if isRefreshingContext {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    }
-
-                                    Text(isRefreshingContext ? "Refreshing..." : (hasCachedContext ? "Refresh Context" : "Fetch Context"))
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.8)
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.glass)
-                            .disabled(isRefreshingContext || viewModel.isLoading)
-
-                            if hasCachedContext {
-                                NavigationLink {
-                                    LocationContextView(location: location, locationEnricher: locationEnricher)
-                                } label: {
-                                    Label("Inspect", systemImage: "doc.text.magnifyingglass")
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.8)
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.glass)
-                            }
+                    Picker("Plan section", selection: $selectedSection) {
+                        ForEach(PlanEditorSection.allCases) { section in
+                            Text(section.title).tag(section)
                         }
                     }
+                    .pickerStyle(.segmented)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }
 
-                Section {
-                    ArcFeatureCard(accent: ArcPalette.tint) {
-                        ArcFeatureTitle(
-                            systemImage: "sparkles.rectangle.stack",
-                            title: "Generation",
-                            subtitle: "\(viewModel.outputIntent.defaultShotCount) shots. \(viewModel.shootWindowSummary)"
-                        )
-
-                        ShootPlanningControls(
-                            outputIntent: $viewModel.outputIntent,
-                            shootWindowMode: $viewModel.shootWindowMode,
-                            shootDate: $viewModel.shootDate,
-                            shootStartTime: $viewModel.shootStartTime,
-                            shootEndTime: $viewModel.shootEndTime
-                        )
-
-                        Button {
-                            Task {
-                                await regeneratePlan()
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if viewModel.isLoading {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-
-                                Text(viewModel.isLoading ? "Regenerating..." : "Regenerate Checklist")
-                                    .frame(maxWidth: .infinity)
-                            }
-                        }
-                        .buttonStyle(.glassProminent)
-                        .disabled(viewModel.isLoading)
-                    }
-                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                }
-
-                Section {
-                    ArcFeatureCard(accent: ArcPalette.glowSecondary) {
-                        ArcFeatureTitle(
-                            systemImage: "note.text",
-                            title: "Notes",
-                            subtitle: nil,
-                            accent: ArcPalette.glowSecondary
-                        )
-
-                        ShootNotesEditor(notes: $viewModel.notes)
-
-                        Button {
-                            saveExistingPlanMetadata()
-                        } label: {
-                            Text("Save Notes")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glass)
-                    }
-                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                }
+                currentPlanSection
 
                 if let errorMessage = viewModel.errorMessage {
                     Section {
@@ -184,31 +82,6 @@ struct PlanEditorSheet: View {
                     }
                 }
 
-                Section {
-                    ArcFeatureCard(accent: ArcPalette.glowPrimary) {
-                        ArcFeatureTitle(
-                            systemImage: "checklist",
-                            title: "Checklist",
-                            subtitle: planItems.isEmpty ? "No items are saved yet." : "\(planItems.count) live items",
-                            accent: ArcPalette.glowPrimary
-                        )
-
-                        if planItems.isEmpty {
-                            Text("Regenerate the plan to create a field checklist.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ShootPlanItemList(
-                                items: planItems,
-                                onEdit: beginEditing,
-                                onDelete: deleteItem
-                            )
-                        }
-                    }
-                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                }
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
@@ -232,6 +105,167 @@ struct PlanEditorSheet: View {
             .sheet(item: $editingItem) { _ in
                 editItemSheet
             }
+        }
+    }
+
+    @ViewBuilder
+    private var currentPlanSection: some View {
+        switch selectedSection {
+        case .checklist:
+            checklistSection
+        case .regenerate:
+            regenerateSection
+        case .context:
+            contextSection
+        }
+    }
+
+    private var checklistSection: some View {
+        Section {
+            ArcFeatureCard(accent: ArcPalette.glowPrimary) {
+                ArcFeatureTitle(
+                    systemImage: "checklist",
+                    title: "Checklist",
+                    subtitle: planItems.isEmpty ? "No items are saved yet." : "\(planItems.count) live items",
+                    accent: ArcPalette.glowPrimary
+                )
+
+                if planItems.isEmpty {
+                    Text("Regenerate the plan to create a field checklist.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ShootPlanItemList(
+                        items: planItems,
+                        onEdit: beginEditing,
+                        onDelete: deleteItem
+                    )
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    private var regenerateSection: some View {
+        Section {
+            ArcFeatureCard(accent: ArcPalette.tint) {
+                ArcFeatureTitle(
+                    systemImage: "sparkles.rectangle.stack",
+                    title: "Regenerate",
+                    subtitle: "\(viewModel.outputIntent.defaultShotCount) shots. \(viewModel.shootWindowSummary)"
+                )
+
+                ShootPlanningControls(
+                    outputIntent: $viewModel.outputIntent,
+                    shootWindowMode: $viewModel.shootWindowMode,
+                    shootDate: $viewModel.shootDate,
+                    shootStartTime: $viewModel.shootStartTime,
+                    shootEndTime: $viewModel.shootEndTime
+                )
+
+                ArcInlinePanel {
+                    ArcFeatureTitle(
+                        systemImage: "note.text",
+                        title: "Notes",
+                        subtitle: "Saved when you tap Done or regenerate.",
+                        accent: ArcPalette.glowSecondary
+                    )
+
+                    ShootNotesEditor(notes: $viewModel.notes)
+                }
+
+                Button {
+                    Task {
+                        await regeneratePlan()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+
+                        Text(viewModel.isLoading ? "Regenerating..." : "Regenerate Checklist")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(viewModel.isLoading)
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    private var contextSection: some View {
+        Section {
+            ArcFeatureCard(accent: contextAccent) {
+                ArcFeatureTitle(
+                    systemImage: hasCachedContext ? "checkmark.circle.fill" : "map.circle.fill",
+                    title: hasCachedContext ? "Context ready" : "Fetch context",
+                    subtitle: contextSubtitle,
+                    accent: contextAccent
+                )
+
+                if let contextRefreshError {
+                    ArcInlineError(message: contextRefreshError)
+                }
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        refreshContextButton
+                        inspectContextLink
+                    }
+
+                    VStack(spacing: 10) {
+                        refreshContextButton
+                        inspectContextLink
+                    }
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    private var refreshContextButton: some View {
+        Button {
+            Task {
+                await refreshContext()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if isRefreshingContext {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                Text(isRefreshingContext ? "Refreshing..." : (hasCachedContext ? "Refresh Context" : "Fetch Context"))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
+        .disabled(isRefreshingContext || viewModel.isLoading)
+    }
+
+    @ViewBuilder
+    private var inspectContextLink: some View {
+        if hasCachedContext {
+            NavigationLink {
+                LocationContextView(location: location, locationEnricher: locationEnricher)
+            } label: {
+                Label("Inspect", systemImage: "doc.text.magnifyingglass")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
         }
     }
 
@@ -378,5 +412,24 @@ struct PlanEditorSheet: View {
         plan.completedAt = nil
         modelContext.delete(item)
         try? modelContext.save()
+    }
+}
+
+private enum PlanEditorSection: String, CaseIterable, Identifiable {
+    case checklist
+    case regenerate
+    case context
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .checklist:
+            return "Checklist"
+        case .regenerate:
+            return "Regenerate"
+        case .context:
+            return "Context"
+        }
     }
 }

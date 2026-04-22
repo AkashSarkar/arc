@@ -12,29 +12,13 @@ struct LocationContextView: View {
         _viewModel = State(initialValue: LocationContextViewModel(location: location, locationEnricher: locationEnricher))
     }
 
-    private var heroBadges: [ArcHeroBadge] {
-        var badges = [ArcHeroBadge(label: location.name, systemImage: "mappin.circle")]
-
-        if let lastEnrichedAt = location.lastEnrichedAt {
-            badges.append(
-                ArcHeroBadge(
-                    label: lastEnrichedAt.formatted(date: .abbreviated, time: .shortened),
-                    systemImage: "clock"
-                )
-            )
-        }
-
-        return badges
-    }
-
     var body: some View {
         List {
             Section {
-                ArcHeroHeader(
+                ArcCompactHeroHeader(
                     systemImage: "map.circle.fill",
                     title: "Location Context",
-                    subtitle: "Refresh external context for this location and inspect the cached JSON bundle used for planning.",
-                    badges: heroBadges
+                    summary: contextSummary
                 )
                 .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)
@@ -161,6 +145,14 @@ struct LocationContextView: View {
         .onAppear {
             viewModel.loadCachedContext(from: location)
         }
+    }
+
+    private var contextSummary: String {
+        if let lastEnrichedAt = location.lastEnrichedAt {
+            return "\(location.name) • \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened))"
+        }
+
+        return location.name
     }
 }
 

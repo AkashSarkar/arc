@@ -272,6 +272,292 @@ struct ArcFeatureCard<Content: View>: View {
     }
 }
 
+struct ArcDenseCard<Content: View>: View {
+    let accent: Color
+    @ViewBuilder let content: Content
+
+    private let cardShape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+
+    init(accent: Color = ArcPalette.tint, @ViewBuilder content: () -> Content) {
+        self.accent = accent
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(ArcPalette.elevatedSurface, in: cardShape)
+        .overlay {
+            cardShape
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(accent.opacity(0.75))
+                .frame(width: 3)
+                .padding(.vertical, 14)
+        }
+    }
+}
+
+struct ArcInlinePanel<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    private let panelShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(ArcPalette.elevatedSurface, in: panelShape)
+        .overlay {
+            panelShape
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
+struct ArcStatusPill: View {
+    let label: String
+    let systemImage: String?
+    var tint: Color = ArcPalette.tint
+
+    init(_ label: String, systemImage: String? = nil, tint: Color = ArcPalette.tint) {
+        self.label = label
+        self.systemImage = systemImage
+        self.tint = tint
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.caption2.weight(.bold))
+            }
+
+            Text(label)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.14), in: Capsule())
+    }
+}
+
+struct ArcMetricTile: View {
+    let title: String
+    let value: String
+    var systemImage: String?
+    var accent: Color = ArcPalette.tint
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let systemImage {
+                ArcMiniIconBadge(systemImage: systemImage, tint: accent)
+                    .scaleEffect(0.82)
+                    .frame(width: 34, height: 34)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Text(value)
+                    .font(.title3.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(accent)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
+struct ArcStepProgressBar: View {
+    let currentIndex: Int
+    let totalCount: Int
+
+    private var progress: Double {
+        guard totalCount > 0 else {
+            return 0
+        }
+
+        return min(max(Double(currentIndex + 1) / Double(totalCount), 0), 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.10))
+
+                    Capsule()
+                        .fill(ArcPalette.tint)
+                        .frame(width: proxy.size.width * progress)
+                }
+            }
+            .frame(height: 8)
+
+            Text("Step \(currentIndex + 1) of \(totalCount)")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 2)
+    }
+}
+
+struct ArcInlineError: View {
+    let message: String
+
+    var body: some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct ArcBottomActionBar: View {
+    let title: String?
+    let subtitle: String?
+    let primaryTitle: String
+    let primarySystemImage: String?
+    let isPrimaryLoading: Bool
+    let isPrimaryDisabled: Bool
+    let secondaryTitle: String?
+    let secondarySystemImage: String?
+    let isSecondaryDisabled: Bool
+    let primaryAction: () -> Void
+    let secondaryAction: (() -> Void)?
+
+    init(
+        title: String? = nil,
+        subtitle: String? = nil,
+        primaryTitle: String,
+        primarySystemImage: String? = nil,
+        isPrimaryLoading: Bool = false,
+        isPrimaryDisabled: Bool = false,
+        secondaryTitle: String? = nil,
+        secondarySystemImage: String? = nil,
+        isSecondaryDisabled: Bool = false,
+        primaryAction: @escaping () -> Void,
+        secondaryAction: (() -> Void)? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.primaryTitle = primaryTitle
+        self.primarySystemImage = primarySystemImage
+        self.isPrimaryLoading = isPrimaryLoading
+        self.isPrimaryDisabled = isPrimaryDisabled
+        self.secondaryTitle = secondaryTitle
+        self.secondarySystemImage = secondarySystemImage
+        self.isSecondaryDisabled = isSecondaryDisabled
+        self.primaryAction = primaryAction
+        self.secondaryAction = secondaryAction
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if title != nil || subtitle != nil {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let title {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                    }
+
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    if let secondaryTitle, let secondaryAction {
+                        Button(action: secondaryAction) {
+                            ArcActionLabel(
+                                title: secondaryTitle,
+                                systemImage: secondarySystemImage,
+                                isLoading: false
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                        .disabled(isSecondaryDisabled)
+                    }
+
+                    Button(action: primaryAction) {
+                        ArcActionLabel(
+                            title: primaryTitle,
+                            systemImage: primarySystemImage,
+                            isLoading: isPrimaryLoading
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(isPrimaryDisabled || isPrimaryLoading)
+                }
+
+                VStack(spacing: 10) {
+                    Button(action: primaryAction) {
+                        ArcActionLabel(
+                            title: primaryTitle,
+                            systemImage: primarySystemImage,
+                            isLoading: isPrimaryLoading
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(isPrimaryDisabled || isPrimaryLoading)
+
+                    if let secondaryTitle, let secondaryAction {
+                        Button(action: secondaryAction) {
+                            ArcActionLabel(
+                                title: secondaryTitle,
+                                systemImage: secondarySystemImage,
+                                isLoading: false
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                        .disabled(isSecondaryDisabled)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .background(.regularMaterial)
+    }
+}
+
 struct ArcFeatureTitle: View {
     let systemImage: String
     let title: String
@@ -304,6 +590,27 @@ struct ArcFeatureTitle: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct ArcActionLabel: View {
+    let title: String
+    let systemImage: String?
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else if let systemImage {
+                Image(systemName: systemImage)
+            }
+
+            Text(title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
     }
 }
 

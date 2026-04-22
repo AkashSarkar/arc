@@ -448,6 +448,7 @@ struct ArcBottomActionBar: View {
     let secondaryTitle: String?
     let secondarySystemImage: String?
     let isSecondaryDisabled: Bool
+    let usesSolidBackground: Bool
     let primaryAction: () -> Void
     let secondaryAction: (() -> Void)?
 
@@ -461,6 +462,7 @@ struct ArcBottomActionBar: View {
         secondaryTitle: String? = nil,
         secondarySystemImage: String? = nil,
         isSecondaryDisabled: Bool = false,
+        usesSolidBackground: Bool = false,
         primaryAction: @escaping () -> Void,
         secondaryAction: (() -> Void)? = nil
     ) {
@@ -473,6 +475,7 @@ struct ArcBottomActionBar: View {
         self.secondaryTitle = secondaryTitle
         self.secondarySystemImage = secondarySystemImage
         self.isSecondaryDisabled = isSecondaryDisabled
+        self.usesSolidBackground = usesSolidBackground
         self.primaryAction = primaryAction
         self.secondaryAction = secondaryAction
     }
@@ -554,7 +557,16 @@ struct ArcBottomActionBar: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 10)
-        .background(.regularMaterial)
+        .background {
+            if usesSolidBackground {
+                ArcPalette.solidFieldSurface
+                    .ignoresSafeArea(edges: .bottom)
+            } else {
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .ignoresSafeArea(edges: .bottom)
+            }
+        }
     }
 }
 

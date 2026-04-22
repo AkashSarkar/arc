@@ -1,5 +1,7 @@
 import SwiftData
 import SwiftUI
+import PhotosUI
+import UIKit
 
 struct FieldView: View {
     let location: ShootLocation
@@ -10,6 +12,7 @@ struct FieldView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("Arc.FieldHighContrastMode") private var isHighContrastMode = false
     @State private var cacheStatus = ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
     @State private var isPresentingInfo = false
     @State private var isPresentingPlanEditor = false
@@ -17,6 +20,7 @@ struct FieldView: View {
     @State private var isConfirmingDelete = false
     @State private var isConfirmingFinish = false
     @State private var hasDismissedCompletionPrompt = false
+    @State private var photoAttachmentError: String?
 
     init(
         location: ShootLocation,
@@ -77,7 +81,8 @@ struct FieldView: View {
                 FieldExecutionHeader(
                     locationName: location.name,
                     plan: plan,
-                    referenceStatus: referenceStatusText
+                    referenceStatus: referenceStatusText,
+                    isHighContrast: isHighContrastMode
                 )
 
                 if hasPlanItems {
@@ -86,20 +91,30 @@ struct FieldView: View {
                         totalCount: planItems.count,
                         remainingCount: remainingCount,
                         progress: completionProgress,
-                        nextPendingTitle: nextPendingItem?.title
+                        nextPendingTitle: nextPendingItem?.title,
+                        isHighContrast: isHighContrastMode
                     )
+                }
+
+                if let photoAttachmentError {
+                    ArcInlineError(message: photoAttachmentError)
+                        .padding(.horizontal, 2)
                 }
 
                 if hasPlanItems {
                     FieldChecklistCard(
                         items: planItems,
-                        toggleItem: toggleItemCompletion
+                        isHighContrast: isHighContrastMode,
+                        toggleItem: toggleItemCompletion,
+                        attachPhoto: attachPhoto,
+                        removePhoto: removePhoto
                     )
 
                     if let plan {
                         FieldGuidanceCard(
                             location: location,
-                            outputIntentTitle: plan.outputIntent.title
+                            outputIntentTitle: plan.outputIntent.title,
+                            isHighContrast: isHighContrastMode
                         )
                     }
                 } else {
@@ -109,8 +124,8 @@ struct FieldView: View {
             .padding(16)
             .padding(.bottom, hasPlanItems ? 112 : 0)
         }
-        .background(ArcSceneBackground())
-        .safeAreaInset(edge: .bottom) {
+        .background(fieldBackground)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             if hasPlanItems {
                 fieldActionBar
             }
@@ -119,6 +134,16 @@ struct FieldView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isHighContrastMode.toggle()
+                    }
+                    playImpact(.light)
+                } label: {
+                    Image(systemName: isHighContrastMode ? "sun.max.fill" : "sun.max")
+                }
+                .accessibilityLabel(isHighContrastMode ? "Disable high contrast field mode" : "Enable high contrast field mode")
+
                 Button {
                     isPresentingInfo = true
                 } label: {
@@ -139,6 +164,10 @@ struct FieldView: View {
                         isPresentingEditLocation = true
                     } label: {
                         Label("Edit Location", systemImage: "slider.horizontal.3")
+                    }
+
+                    Toggle(isOn: $isHighContrastMode) {
+                        Label("High Contrast", systemImage: "sun.max")
                     }
 
                     Button {
@@ -207,6 +236,16 @@ struct FieldView: View {
         }
     }
 
+    @ViewBuilder
+    private var fieldBackground: some View {
+        if isHighContrastMode {
+            Color(uiColor: .systemBackground)
+                .ignoresSafeArea()
+        } else {
+            ArcSceneBackground()
+        }
+    }
+
     private var referenceStatusText: String? {
         guard cacheStatus.totalImages > 0 else {
             return nil
@@ -225,6 +264,7 @@ struct FieldView: View {
                 primarySystemImage: "checkmark.seal",
                 secondaryTitle: "Keep Open",
                 secondarySystemImage: "xmark",
+                usesSolidBackground: isHighContrastMode,
                 primaryAction: { isConfirmingFinish = true },
                 secondaryAction: { hasDismissedCompletionPrompt = true }
             )
@@ -236,6 +276,7 @@ struct FieldView: View {
                 primarySystemImage: "checkmark.seal",
                 secondaryTitle: "Reset",
                 secondarySystemImage: "arrow.counterclockwise",
+                usesSolidBackground: isHighContrastMode,
                 primaryAction: { isConfirmingFinish = true },
                 secondaryAction: resetChecklist
             )
@@ -247,6 +288,7 @@ struct FieldView: View {
                 primarySystemImage: "checkmark.circle.fill",
                 secondaryTitle: "Reset",
                 secondarySystemImage: "arrow.counterclockwise",
+                usesSolidBackground: isHighContrastMode,
                 primaryAction: completeNextItem,
                 secondaryAction: resetChecklist
             )
@@ -258,7 +300,9 @@ struct FieldView: View {
             item.isCaptured.toggle()
         }
 
+        photoAttachmentError = nil
         hasDismissedCompletionPrompt = false
+        playImpact(item.isCaptured ? .medium : .light)
         saveChanges()
     }
 
@@ -277,7 +321,9 @@ struct FieldView: View {
             }
         }
 
+        photoAttachmentError = nil
         hasDismissedCompletionPrompt = false
+        playImpact(.heavy)
         saveChanges()
     }
 
@@ -288,17 +334,89 @@ struct FieldView: View {
 
         plan.completedAt = Date()
         saveChanges()
+        playNotification(.success)
         dismiss()
     }
 
     private func deleteShoot() {
         modelContext.delete(location)
         saveChanges()
+        playNotification(.warning)
         dismiss()
+    }
+
+    private func attachPhoto(_ pickerItem: PhotosPickerItem?, to item: ShootPlanItem) {
+        guard let pickerItem else {
+            return
+        }
+
+        Task {
+            do {
+                guard let data = try await pickerItem.loadTransferable(type: Data.self) else {
+                    photoAttachmentError = "Arc could not load that image."
+                    playNotification(.error)
+                    return
+                }
+
+                let storedData = compressedImageData(from: data) ?? data
+
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    item.capturedPhotoData = storedData
+                    item.capturedPhotoAttachedAt = Date()
+                    item.isCaptured = true
+                }
+
+                photoAttachmentError = nil
+                hasDismissedCompletionPrompt = false
+                saveChanges()
+                playNotification(.success)
+            } catch {
+                photoAttachmentError = error.localizedDescription
+                playNotification(.error)
+            }
+        }
+    }
+
+    private func removePhoto(from item: ShootPlanItem) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            item.capturedPhotoData = nil
+            item.capturedPhotoAttachedAt = nil
+        }
+
+        photoAttachmentError = nil
+        saveChanges()
+        playImpact(.light)
     }
 
     private func saveChanges() {
         try? modelContext.save()
+    }
+
+    private func compressedImageData(from data: Data) -> Data? {
+        guard let image = UIImage(data: data) else {
+            return nil
+        }
+
+        let maxSide: CGFloat = 1_600
+        let size = image.size
+        let longestSide = max(size.width, size.height)
+        let scale = longestSide > maxSide ? maxSide / longestSide : 1
+        let targetSize = CGSize(width: size.width * scale, height: size.height * scale)
+
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resizedImage = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        return resizedImage.jpegData(compressionQuality: 0.76)
+    }
+
+    private func playImpact(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+
+    private func playNotification(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        UINotificationFeedbackGenerator().notificationOccurred(type)
     }
 }
 
@@ -306,6 +424,7 @@ private struct FieldExecutionHeader: View {
     let locationName: String
     let plan: ShootPlan?
     let referenceStatus: String?
+    let isHighContrast: Bool
 
     var body: some View {
         ArcCompactHeroHeader(
@@ -327,6 +446,10 @@ private struct FieldExecutionHeader: View {
                 }
             }
         }
+
+        if isHighContrast {
+            ArcStatusPill("High Contrast", systemImage: "sun.max.fill", tint: ArcPalette.tint)
+        }
     }
 
     private var summary: String {
@@ -344,6 +467,7 @@ private struct FieldProgressPanel: View {
     let remainingCount: Int
     let progress: Double
     let nextPendingTitle: String?
+    let isHighContrast: Bool
 
     var body: some View {
         ArcDenseCard(accent: ArcPalette.tint) {
@@ -361,7 +485,8 @@ private struct FieldProgressPanel: View {
 
             FieldProgressSection(
                 progress: progress,
-                nextPendingTitle: nextPendingTitle
+                nextPendingTitle: nextPendingTitle,
+                isHighContrast: isHighContrast
             )
         }
     }
@@ -369,7 +494,10 @@ private struct FieldProgressPanel: View {
 
 private struct FieldChecklistCard: View {
     let items: [ShootPlanItem]
+    let isHighContrast: Bool
     let toggleItem: (ShootPlanItem) -> Void
+    let attachPhoto: (PhotosPickerItem?, ShootPlanItem) -> Void
+    let removePhoto: (ShootPlanItem) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -382,20 +510,27 @@ private struct FieldChecklistCard: View {
 
             VStack(spacing: 12) {
                 ForEach(items) { item in
-                    Button {
-                        toggleItem(item)
-                    } label: {
-                        FieldChecklistRow(item: item)
-                    }
-                    .buttonStyle(.plain)
+                    FieldChecklistRow(
+                        item: item,
+                        isHighContrast: isHighContrast,
+                        toggleItem: {
+                            toggleItem(item)
+                        },
+                        attachPhoto: { pickerItem in
+                            attachPhoto(pickerItem, item)
+                        },
+                        removePhoto: {
+                            removePhoto(item)
+                        }
+                    )
                 }
             }
         }
-        .padding(20)
-        .background(ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(isHighContrast ? 18 : 20)
+        .background(isHighContrast ? Color(uiColor: .secondarySystemBackground) : ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
@@ -403,6 +538,7 @@ private struct FieldChecklistCard: View {
 private struct FieldGuidanceCard: View {
     let location: ShootLocation
     let outputIntentTitle: String
+    let isHighContrast: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -438,10 +574,10 @@ private struct FieldGuidanceCard: View {
             )
         }
         .padding(20)
-        .background(ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(isHighContrast ? Color(uiColor: .secondarySystemBackground) : ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
@@ -466,6 +602,7 @@ private struct FieldPlanRequiredCard: View {
 private struct FieldProgressSection: View {
     let progress: Double
     let nextPendingTitle: String?
+    let isHighContrast: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -490,52 +627,107 @@ private struct FieldProgressSection: View {
                 .lineLimit(1)
         }
         .padding(14)
-        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(isHighContrast ? Color(uiColor: .systemBackground) : ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
 
 private struct FieldChecklistRow: View {
     let item: ShootPlanItem
+    let isHighContrast: Bool
+    let toggleItem: () -> Void
+    let attachPhoto: (PhotosPickerItem?) -> Void
+    let removePhoto: () -> Void
+
+    private var thumbnailImage: UIImage? {
+        guard let data = item.capturedPhotoData else {
+            return nil
+        }
+
+        return UIImage(data: data)
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: item.isCaptured ? "checkmark.circle.fill" : "circle")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(item.isCaptured ? ArcPalette.tint : .secondary)
-                .padding(.top, 2)
+        let hasAttachedPhoto = item.capturedPhotoData != nil
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 8) {
-                    Text(item.title)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: toggleItem) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: item.isCaptured ? "checkmark.circle.fill" : "circle")
+                        .font((isHighContrast ? Font.title2 : .title3).weight(.semibold))
+                        .foregroundStyle(item.isCaptured ? ArcPalette.tint : .secondary)
+                        .padding(.top, 2)
 
-                    Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(item.title)
+                                .font(isHighContrast ? .title3.weight(.semibold) : .headline)
+                                .foregroundStyle(.primary)
 
-                    Text(item.role)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(ArcPalette.tint.opacity(0.14), in: Capsule())
-                        .foregroundStyle(ArcPalette.tint)
+                            Spacer(minLength: 0)
+
+                            Text(item.role)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(ArcPalette.tint.opacity(0.14), in: Capsule())
+                                .foregroundStyle(ArcPalette.tint)
+                        }
+
+                        Text(item.guidance)
+                            .font(isHighContrast ? .body : .subheadline)
+                            .foregroundStyle(isHighContrast ? .primary : .secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+            }
+            .buttonStyle(.plain)
 
-                Text(item.guidance)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if let thumbnailImage {
+                Image(uiImage: thumbnailImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 132)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(alignment: .topTrailing) {
+                        ArcStatusPill("Snap attached", systemImage: "photo.fill", tint: ArcPalette.tint)
+                            .padding(8)
+                    }
+            }
+
+            HStack(spacing: 10) {
+                PhotosPicker(
+                    selection: Binding<PhotosPickerItem?>(
+                        get: { nil },
+                        set: { attachPhoto($0) }
+                    ),
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) {
+                    Label(hasAttachedPhoto ? "Replace Snap" : "Add Snap", systemImage: "camera.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+
+                if hasAttachedPhoto {
+                    Button(role: .destructive, action: removePhoto) {
+                        Image(systemName: "trash")
+                            .frame(width: 44, height: 20)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel("Remove attached snap")
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(isHighContrast ? 20 : 18)
+        .background(isHighContrast ? Color(uiColor: .systemBackground) : ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(item.isCaptured ? ArcPalette.tint.opacity(0.45) : ArcPalette.surfaceStroke, lineWidth: 1)
+                .stroke(item.isCaptured ? ArcPalette.tint.opacity(isHighContrast ? 0.75 : 0.45) : (isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke), lineWidth: isHighContrast ? 1.5 : 1)
         }
     }
 }

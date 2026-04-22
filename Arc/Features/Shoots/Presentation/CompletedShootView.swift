@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct CompletedShootView: View {
     let location: ShootLocation
@@ -81,8 +82,7 @@ struct CompletedShootView: View {
                         ForEach(selectedItems) { item in
                             CompletedShotRow(
                                 systemImage: selectedSection.systemImage,
-                                title: item.title,
-                                subtitle: "Role: \(item.role). \(item.guidance)",
+                                item: item,
                                 tint: selectedSection.accent
                             )
                         }
@@ -158,22 +158,39 @@ struct CompletedShootView: View {
 
 private struct CompletedShotRow: View {
     let systemImage: String
-    let title: String
-    let subtitle: String
+    let item: ShootPlanItem
     let tint: Color
 
+    private var thumbnailImage: UIImage? {
+        guard let data = item.capturedPhotoData else {
+            return nil
+        }
+
+        return UIImage(data: data)
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            ArcMiniIconBadge(systemImage: systemImage, tint: tint)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 14) {
+                ArcMiniIconBadge(systemImage: systemImage, tint: tint)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.headline)
 
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text("Role: \(item.role). \(item.guidance)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let thumbnailImage {
+                Image(uiImage: thumbnailImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 128)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
     }

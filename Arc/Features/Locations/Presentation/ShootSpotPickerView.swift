@@ -24,7 +24,7 @@ struct ShootSpotPickerView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(ArcSceneBackground())
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             confirmationBar
         }
         .task {

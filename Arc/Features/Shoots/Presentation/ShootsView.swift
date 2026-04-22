@@ -59,12 +59,11 @@ struct ShootsView: View {
             }
 
             Section {
-                Picker("Shoot status", selection: $selectedSegment) {
-                    ForEach(ShootSegment.allCases) { segment in
-                        Text(segment.title).tag(segment)
-                    }
-                }
-                .pickerStyle(.segmented)
+                ShootsSegmentControl(
+                    selection: $selectedSegment,
+                    activeCount: activeShoots.count,
+                    completedCount: completedShoots.count
+                )
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -265,6 +264,77 @@ private enum ShootSegment: String, CaseIterable, Identifiable {
         case .completed:
             return "Completed"
         }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .active:
+            return "checklist"
+        case .completed:
+            return "checkmark.seal"
+        }
+    }
+}
+
+private struct ShootsSegmentControl: View {
+    @Binding var selection: ShootSegment
+    let activeCount: Int
+    let completedCount: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            segmentButton(.active, count: activeCount)
+            segmentButton(.completed, count: completedCount)
+        }
+        .padding(6)
+        .background(ArcPalette.surfaceFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .glassEffect(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Shoot status")
+    }
+
+    private func segmentButton(_ segment: ShootSegment, count: Int) -> some View {
+        let isSelected = selection == segment
+        let tint = segment == .active ? ArcPalette.tint : ArcPalette.glowSecondary
+
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                selection = segment
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: segment.systemImage)
+                    .font(.subheadline.weight(.semibold))
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(segment.title)
+                        .font(.subheadline.weight(.semibold))
+
+                    Text("\(count)")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(isSelected ? tint : .secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .fill(isSelected ? tint.opacity(0.16) : Color.clear)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .stroke(isSelected ? tint.opacity(0.42) : Color.clear, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

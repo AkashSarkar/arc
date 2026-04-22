@@ -86,6 +86,8 @@ final class ShootPlanItem {
     var role: String
     var guidance: String
     var isCaptured: Bool
+    @Attribute(.externalStorage) var capturedPhotoData: Data?
+    var capturedPhotoAttachedAt: Date?
     var plan: ShootPlan?
 
     init(
@@ -95,6 +97,8 @@ final class ShootPlanItem {
         role: String,
         guidance: String,
         isCaptured: Bool = false,
+        capturedPhotoData: Data? = nil,
+        capturedPhotoAttachedAt: Date? = nil,
         plan: ShootPlan? = nil
     ) {
         self.id = id
@@ -103,6 +107,8 @@ final class ShootPlanItem {
         self.role = role
         self.guidance = guidance
         self.isCaptured = isCaptured
+        self.capturedPhotoData = capturedPhotoData
+        self.capturedPhotoAttachedAt = capturedPhotoAttachedAt
         self.plan = plan
     }
 }

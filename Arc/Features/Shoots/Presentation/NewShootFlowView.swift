@@ -120,7 +120,7 @@ struct NewShootFlowView: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(ArcSceneBackground())
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             wizardActionBar
         }
     }

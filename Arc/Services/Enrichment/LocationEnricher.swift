@@ -137,7 +137,7 @@ struct LocationEnricher: LocationEnriching {
             let value = try await operation()
             return SourceResult(value: value, status: .success(detail(value)))
         } catch FlickrAPIClientError.missingAPIKey {
-            return SourceResult(value: fallback, status: .skipped(FlickrAPIClientError.missingAPIKey.localizedDescription ?? "Flickr API key missing."))
+            return SourceResult(value: fallback, status: .skipped(FlickrAPIClientError.missingAPIKey.localizedDescription))
         } catch {
             return SourceResult(value: fallback, status: .failed(error.localizedDescription))
         }

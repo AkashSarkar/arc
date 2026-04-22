@@ -18,17 +18,12 @@ struct ShootInfoSheet: View {
         NavigationStack {
             List {
                 Section {
-                    ArcHeroHeader(
+                    ArcCompactHeroHeader(
                         systemImage: "info.circle.fill",
                         title: "Shoot Info",
-                        subtitle: "Location, context, and offline reference status for the active checklist."
-                    ) {
-                        Label(location.name, systemImage: "mappin.and.ellipse")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                        summary: location.name
+                    )
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }

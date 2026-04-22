@@ -128,6 +128,7 @@ Use the current project structure consistently:
 
 - Make the smallest coherent change that fully solves the problem.
 - Do not refactor unrelated files during a feature change unless it removes a direct blocker.
+- Remove obsolete files, screens, helpers, and dead code as part of the change that makes them unreachable. Do not keep legacy code around "just in case"; if something must remain for a deliberate future use, document that reason where it lives.
 - Preserve public APIs and file structure when possible.
 - If a new capability requires project configuration, update the configuration in the same change.
 - If a new pattern is introduced, apply it consistently within the local feature scope.

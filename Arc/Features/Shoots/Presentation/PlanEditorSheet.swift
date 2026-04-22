@@ -44,17 +44,12 @@ struct PlanEditorSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    ArcHeroHeader(
+                    ArcCompactHeroHeader(
                         systemImage: "slider.horizontal.3",
                         title: "Edit Plan",
-                        subtitle: "Tune the active checklist. Regenerating replaces the current items and keeps the shoot active."
-                    ) {
-                        Label(location.name, systemImage: "mappin.and.ellipse")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
+                        summary: location.name
+                    )
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }

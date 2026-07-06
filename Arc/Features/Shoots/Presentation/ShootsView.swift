@@ -13,6 +13,7 @@ struct ShootsView: View {
     @Query(sort: \ShootLocation.createdAt, order: .reverse) private var locations: [ShootLocation]
     @State private var selectedSegment: ShootSegment = .active
     @State private var isPresentingNewShoot = false
+    @State private var isPresentingImport = false
     @State private var isPresentingSettings = false
     @State private var selectedShoot: ShootLocation?
 
@@ -149,12 +150,22 @@ struct ShootsView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    isPresentingNewShoot = true
+                Menu {
+                    Button {
+                        isPresentingNewShoot = true
+                    } label: {
+                        Label("New Location Plan", systemImage: "mappin.and.ellipse")
+                    }
+
+                    Button {
+                        isPresentingImport = true
+                    } label: {
+                        Label("Import Existing Plan", systemImage: "square.and.arrow.down")
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("New capture plan")
+                .accessibilityLabel("Add capture plan")
             }
         }
         .sheet(isPresented: $isPresentingNewShoot) {
@@ -164,6 +175,12 @@ struct ShootsView: View {
                 referenceImageCache: referenceImageCache,
                 locationEditorServices: locationEditorServices
             ) { location in
+                selectedSegment = .active
+                selectedShoot = location
+            }
+        }
+        .sheet(isPresented: $isPresentingImport) {
+            ImportPlanFlowView(aiService: aiService) { location in
                 selectedSegment = .active
                 selectedShoot = location
             }
@@ -188,15 +205,21 @@ struct ShootsView: View {
     }
 
     private var rootSubtitle: String {
-        if let nextShoot = activeShoots.first, let nextItem = nextShoot.plan?.orderedItems.first(where: { !$0.isCaptured }) {
-            return "Next up: \(nextItem.title) at \(nextShoot.name)."
+        if let nextShoot = activeShoots.first, let plan = nextShoot.plan {
+            if let stage = plan.currentStage, plan.source == .importedText {
+                return "Next stage: \(stage.title) in \(nextShoot.name)."
+            }
+
+            if let nextItem = plan.orderedItems.first(where: { !$0.isResolved }) {
+                return "Next up: \(nextItem.title) at \(nextShoot.name)."
+            }
         }
 
         if !activeShoots.isEmpty {
-            return "Open an active capture plan and keep the shot list moving."
+            return "Open an active capture plan and keep the field guide moving."
         }
 
-        return "Create a capture plan, then work the shot list in the field."
+        return "Create or import a capture plan, then work it in the field."
     }
 
     @ViewBuilder
@@ -207,16 +230,46 @@ struct ShootsView: View {
                 ArcFeatureTitle(
                     systemImage: "plus.circle",
                     title: "Start your first capture plan",
-                    subtitle: "Pick a place, generate a plan, and land directly on the shot list."
+                    subtitle: "Pick a place or import a trip plan you already wrote."
                 )
 
-                Button {
-                    isPresentingNewShoot = true
-                } label: {
-                    Text("New Capture Plan")
-                        .frame(maxWidth: .infinity)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        Button {
+                            isPresentingNewShoot = true
+                        } label: {
+                            Label("New Location Plan", systemImage: "mappin.and.ellipse")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glassProminent)
+
+                        Button {
+                            isPresentingImport = true
+                        } label: {
+                            Label("Import Plan", systemImage: "square.and.arrow.down")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                    }
+
+                    VStack(spacing: 10) {
+                        Button {
+                            isPresentingNewShoot = true
+                        } label: {
+                            Label("New Location Plan", systemImage: "mappin.and.ellipse")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glassProminent)
+
+                        Button {
+                            isPresentingImport = true
+                        } label: {
+                            Label("Import Plan", systemImage: "square.and.arrow.down")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                    }
                 }
-                .buttonStyle(.glassProminent)
             }
         case .completed:
             ArcFeatureCard(accent: ArcPalette.glowSecondary) {
@@ -350,7 +403,7 @@ private struct ShootsActiveRow: View {
             return "0/0"
         }
 
-        return "\(plan.capturedCount)/\(plan.items.count)"
+        return plan.source == .importedText ? "\(plan.resolvedCount)/\(plan.items.count)" : "\(plan.capturedCount)/\(plan.items.count)"
     }
 
     private var nextTitle: String {
@@ -358,7 +411,11 @@ private struct ShootsActiveRow: View {
             return "Plan needed"
         }
 
-        if let next = plan.orderedItems.first(where: { !$0.isCaptured }) {
+        if let stage = plan.currentStage, plan.source == .importedText {
+            return stage.title
+        }
+
+        if let next = plan.orderedItems.first(where: { !$0.isResolved }) {
             return next.title
         }
 
@@ -386,12 +443,16 @@ private struct ShootsActiveRow: View {
             }
 
             if let plan {
-                FieldProgressBar(progress: plan.completionProgress)
+                FieldProgressBar(progress: plan.source == .importedText ? plan.fieldCompletionProgress : plan.completionProgress)
                     .frame(height: 7)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
+                        if plan.source == .importedText {
+                            ArcStatusPill("Imported", systemImage: "square.and.arrow.down", tint: ArcPalette.glowSecondary)
+                            ArcStatusPill("\(plan.fieldStages.count) stages", systemImage: "rectangle.stack", tint: ArcPalette.glowPrimary)
+                        }
                         ArcStatusPill(plan.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
                         ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
                         ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
@@ -433,6 +494,9 @@ private struct ShootsCompletedRow: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ArcStatusPill("\(plan.capturedCount)/\(plan.items.count)", systemImage: "checkmark.circle", tint: ArcPalette.tint)
+                        if plan.source == .importedText {
+                            ArcStatusPill("Imported", systemImage: "square.and.arrow.down", tint: ArcPalette.glowSecondary)
+                        }
                         ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up", tint: ArcPalette.glowSecondary)
                         ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.tint)
                         ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowPrimary)

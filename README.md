@@ -4,12 +4,21 @@ Arc is an iPhone-first capture planning app for solo creators. The app helps a u
 
 The product name stays **Arc**. The main workflow object is a **Capture Plan**.
 
+## Documentation
+
+Full project documentation lives in [docs/00-index.md](docs/00-index.md). Start there. Key entry points:
+
+- [docs/01-product.md](docs/01-product.md) — what Arc is and why.
+- [docs/05-data-model.md](docs/05-data-model.md) — schema v2 + document format.
+- [docs/08-roadmap.md](docs/08-roadmap.md) — what to build now.
+
 ## Product Direction
 
 Arc is no longer a saved-location catalogue. The redesigned experience is built around execution:
 
 - The root screen is `Capture Plans`, split into `Active` and `Completed`.
-- Active plans open directly into the field shot list experience.
+- Active plans open directly into the field guide experience.
+- Existing Apple Notes-style plans can be pasted into an imported field guide for dogfooding multi-stage execution.
 - Planning, location info, context, and editing live in sheets from the field surface.
 - Completed plans become read-only summaries with Reopen and Delete actions.
 - Pro camera capture is intentionally deferred so the planning loop stays sharp.
@@ -37,14 +46,16 @@ Arc is no longer a saved-location catalogue. The redesigned experience is built 
 - OpenAI-compatible AI service with configurable local or cloud profiles.
 - Keychain-backed API key storage.
 - Guided new-plan flow with in-memory draft generation and commit-on-approval.
+- Imported-plan flow with paste-from-clipboard, local staged parsing, optional AI cleanup, and editable stage/item review.
 - Capture brief controls for content type, photo/video/hybrid medium, target platform, style, and timing.
 - Content types include Photo Carousel, Short Video, Full Travel Vlog, Travel Story Set, B-Roll Package, Portrait Session, Product Editorial, Documentary Sequence, and Single Hero Shot.
 - Style presets include Natural, Cinematic, Minimal, Editorial, Social Reel, and Moody Travel.
-- Field-first shot list execution with progress, high-contrast mode, haptics, and completion confirmation.
+- Field-first stage execution with must-capture, optional, voice/sound/transition, before-leaving checks, progress, high-contrast mode, haptics, and completion confirmation.
+- Story Safety Net recovery checklist for adding emergency coverage to the current stage.
 - Plan editor sheet for brief changes, context refresh, shot edits, and preview-before-replace regeneration.
 - Plan info sheet for location, context, and reference cache status.
-- Completed plan summary with captured and missing shot sections.
-- Shareable completed plan summaries.
+- Completed plan summary with captured, skipped, and missing sections plus imported-plan story completeness.
+- Shareable completed plan editing outlines grouped by stage.
 - Optional shot-level image attachment from the photo library. Custom pro camera capture is not part of this core pass.
 
 ## Architecture
@@ -87,8 +98,8 @@ Key boundaries:
 The current persistence model intentionally keeps the existing `Shoot*` type names internally while presenting Capture Plans in the UI.
 
 - `ShootLocation`: persisted location plus optional plan.
-- `ShootPlan`: content type, capture medium, target platform, style, timing, notes, raw response, approval state, and `completedAt`.
-- `ShootPlanItem`: ordered shot list item with title, role, guidance, captured state, and optional attached image data.
+- `ShootPlan`: content type, capture medium, target platform, style, timing, notes, raw response, imported source text, story summary, current stage cursor, approval state, and `completedAt`.
+- `ShootPlanItem`: ordered field item with title, role, guidance, stage metadata, kind, priority, captured/skipped state, field note, before-leaving flag, and optional attached image data.
 - `ShootStatus`: derived status:
   - `draft`: no approved plan.
   - `active`: approved plan with no `completedAt`.
@@ -126,32 +137,8 @@ xcodebuild -scheme Arc -project Arc.xcodeproj -destination 'generic/platform=iOS
 
 ## Manual Verification
 
-Run this golden path after UX or persistence changes:
-
-1. Empty launch shows Capture Plans and a New Capture Plan CTA.
-2. New Capture Plan uses current GPS by default and still supports search and map pin.
-3. Invalid custom timing blocks progress before generation.
-4. Generate fetches context and produces a reviewable draft.
-5. Start Capture Plan commits the location, plan, and shot list.
-6. Field progress updates as items are captured.
-7. Capturing the final item shows a completion prompt and does not auto-complete.
-8. Complete Plan moves it to Completed.
-9. Reopen moves it back to Active.
-10. Relaunch preserves Active and Completed state.
+The manual verification checklist lives in [docs/09-quality.md](docs/09-quality.md).
 
 ## Roadmap
 
-Near-term work should strengthen the core Capture Plan loop:
-
-- Dogfood real plans and score output quality for familiar locations.
-- Improve reference-image visibility and cache inspection.
-- Add regeneration comparison so users can see exactly what changed between current and previewed lists.
-- Add richer shot-level notes and constraints.
-
-Deferred until the core workflow is proven:
-
-- Pro camera with manual controls, Log, and RAW capture.
-- Photo import and automatic matching against the shot list.
-- Multi-location shoot days.
-- Cloud sync.
-- Public launch, monetization, and multi-user collaboration.
+The roadmap, current phase, and phase non-goals live in [docs/08-roadmap.md](docs/08-roadmap.md).

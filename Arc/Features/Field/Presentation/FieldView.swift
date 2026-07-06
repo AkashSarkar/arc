@@ -1,6 +1,6 @@
+import PhotosUI
 import SwiftData
 import SwiftUI
-import PhotosUI
 import UIKit
 
 struct FieldView: View {
@@ -17,24 +17,14 @@ struct FieldView: View {
     @State private var isPresentingInfo = false
     @State private var isPresentingPlanEditor = false
     @State private var isPresentingEditLocation = false
+    @State private var isPresentingSafetyNet = false
     @State private var isConfirmingDelete = false
     @State private var isConfirmingFinish = false
+    @State private var isConfirmingStageAdvance = false
+    @State private var pendingStageOrderIndex: Int?
     @State private var hasDismissedCompletionPrompt = false
     @State private var photoAttachmentError: String?
-
-    init(
-        location: ShootLocation,
-        aiService: any AIServicing,
-        locationEnricher: any LocationEnriching,
-        referenceImageCache: any ReferenceImageCaching,
-        locationEditorServices: LocationEditorServiceFactory
-    ) {
-        self.location = location
-        self.aiService = aiService
-        self.locationEnricher = locationEnricher
-        self.referenceImageCache = referenceImageCache
-        self.locationEditorServices = locationEditorServices
-    }
+    @State private var editingNoteItem: ShootPlanItem?
 
     private var plan: ShootPlan? {
         guard let existingPlan = location.plan,
@@ -47,28 +37,44 @@ struct FieldView: View {
         return existingPlan
     }
 
+    private var isImportedPlan: Bool {
+        plan?.source == .importedText
+    }
+
     private var planItems: [ShootPlanItem] {
         plan?.orderedItems ?? []
+    }
+
+    private var fieldStages: [FieldGuideStage] {
+        plan?.fieldStages ?? []
+    }
+
+    private var currentStage: FieldGuideStage? {
+        plan?.currentStage
+    }
+
+    private var currentStagePosition: Int? {
+        guard let currentStage else {
+            return nil
+        }
+
+        return fieldStages.firstIndex { $0.orderIndex == currentStage.orderIndex }
     }
 
     private var hasPlanItems: Bool {
         !planItems.isEmpty
     }
 
-    private var completedCount: Int {
-        plan?.capturedCount ?? 0
+    private var nextPendingItem: ShootPlanItem? {
+        currentStage?.items.first(where: { !$0.isResolved }) ?? planItems.first(where: { !$0.isResolved })
     }
 
     private var remainingCount: Int {
-        max(planItems.count - completedCount, 0)
+        plan?.missingCount ?? 0
     }
 
     private var completionProgress: Double {
-        plan?.completionProgress ?? 0
-    }
-
-    private var nextPendingItem: ShootPlanItem? {
-        planItems.first(where: { !$0.isCaptured })
+        plan?.fieldCompletionProgress ?? 0
     }
 
     private var shouldShowCompletionPrompt: Bool {
@@ -81,17 +87,18 @@ struct FieldView: View {
                 FieldExecutionHeader(
                     locationName: location.name,
                     plan: plan,
+                    currentStage: currentStage,
                     referenceStatus: referenceStatusText,
                     isHighContrast: isHighContrastMode
                 )
 
-                if hasPlanItems {
+                if hasPlanItems, let plan {
                     FieldProgressPanel(
-                        completedCount: completedCount,
+                        completedCount: plan.capturedCount,
+                        skippedCount: plan.skippedCount,
                         totalCount: planItems.count,
                         remainingCount: remainingCount,
                         progress: completionProgress,
-                        nextPendingTitle: nextPendingItem?.title,
                         isHighContrast: isHighContrastMode
                     )
                 }
@@ -101,19 +108,30 @@ struct FieldView: View {
                         .padding(.horizontal, 2)
                 }
 
-                if hasPlanItems {
-                    FieldChecklistCard(
-                        items: planItems,
+                if hasPlanItems, let stage = currentStage {
+                    FieldStageNavigator(
+                        stage: stage,
+                        currentPosition: currentStagePosition ?? 0,
+                        totalStages: fieldStages.count,
                         isHighContrast: isHighContrastMode,
-                        toggleItem: toggleItemCompletion,
+                        previousAction: previousStage,
+                        nextAction: attemptNextStage
+                    )
+
+                    FieldStageCard(
+                        stage: stage,
+                        isHighContrast: isHighContrastMode,
+                        toggleCaptured: toggleItemCompletion,
+                        toggleSkipped: toggleItemSkipped,
                         attachPhoto: attachPhoto,
-                        removePhoto: removePhoto
+                        removePhoto: removePhoto,
+                        editNote: { editingNoteItem = $0 }
                     )
 
                     if let plan {
                         FieldGuidanceCard(
                             location: location,
-                            outputIntentTitle: plan.outputIntent.title,
+                            plan: plan,
                             isHighContrast: isHighContrastMode
                         )
                     }
@@ -130,7 +148,7 @@ struct FieldView: View {
                 fieldActionBar
             }
         }
-        .navigationTitle("Capture Plan")
+        .navigationTitle("Field Guide")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -144,12 +162,23 @@ struct FieldView: View {
                 }
                 .accessibilityLabel(isHighContrastMode ? "Disable high contrast mode" : "Enable high contrast mode")
 
-                Button {
-                    isPresentingInfo = true
-                } label: {
-                    Image(systemName: "info.circle")
+                if hasPlanItems {
+                    Button {
+                        isPresentingSafetyNet = true
+                    } label: {
+                        Image(systemName: "lifepreserver")
+                    }
+                    .accessibilityLabel("Open story safety net")
                 }
-                .accessibilityLabel("Plan info")
+
+                if !isImportedPlan {
+                    Button {
+                        isPresentingInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityLabel("Plan info")
+                }
 
                 Button {
                     isPresentingPlanEditor = true
@@ -160,10 +189,12 @@ struct FieldView: View {
                 .disabled(location.plan == nil)
 
                 Menu {
-                    Button {
-                        isPresentingEditLocation = true
-                    } label: {
-                        Label("Edit Location", systemImage: "slider.horizontal.3")
+                    if !isImportedPlan {
+                        Button {
+                            isPresentingEditLocation = true
+                        } label: {
+                            Label("Edit Location", systemImage: "slider.horizontal.3")
+                        }
                     }
 
                     Toggle(isOn: $isHighContrastMode) {
@@ -211,6 +242,14 @@ struct FieldView: View {
                 location.longitude = draft.coordinate.longitude
             }
         }
+        .sheet(isPresented: $isPresentingSafetyNet) {
+            SafetyNetSheet(addItems: addSafetyNetItems)
+        }
+        .sheet(item: $editingNoteItem) { item in
+            FieldNoteEditorSheet(item: item) {
+                saveChanges()
+            }
+        }
         .confirmationDialog("Complete this plan?", isPresented: $isConfirmingFinish, titleVisibility: .visible) {
             Button("Complete Plan") {
                 finishShoot()
@@ -220,6 +259,17 @@ struct FieldView: View {
             }
         } message: {
             Text("The capture plan will move to Completed. You can reopen it later.")
+        }
+        .confirmationDialog("Move to the next stage?", isPresented: $isConfirmingStageAdvance, titleVisibility: .visible) {
+            Button("Move Anyway") {
+                advanceToPendingStage()
+            }
+
+            Button("Cancel", role: .cancel) {
+                pendingStageOrderIndex = nil
+            }
+        } message: {
+            Text(stageAdvanceWarningText)
         }
         .confirmationDialog("Delete this plan?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
             Button("Delete Plan", role: .destructive) {
@@ -247,7 +297,7 @@ struct FieldView: View {
     }
 
     private var referenceStatusText: String? {
-        guard cacheStatus.totalImages > 0 else {
+        guard !isImportedPlan, cacheStatus.totalImages > 0 else {
             return nil
         }
 
@@ -258,7 +308,7 @@ struct FieldView: View {
     private var fieldActionBar: some View {
         if shouldShowCompletionPrompt {
             ArcBottomActionBar(
-                title: "All shots captured",
+                title: "Field guide wrapped",
                 subtitle: "Complete to move this plan to Completed.",
                 primaryTitle: "Complete Plan",
                 primarySystemImage: "checkmark.seal",
@@ -268,41 +318,97 @@ struct FieldView: View {
                 primaryAction: { isConfirmingFinish = true },
                 secondaryAction: { hasDismissedCompletionPrompt = true }
             )
-        } else if nextPendingItem == nil {
+        } else if currentStage?.missingItems.isEmpty == true {
             ArcBottomActionBar(
-                title: "Shot list wrapped",
-                subtitle: "\(completedCount)/\(planItems.count) captured.",
-                primaryTitle: "Complete Plan",
-                primarySystemImage: "checkmark.seal",
-                secondaryTitle: "Reset",
+                title: "Stage wrapped",
+                subtitle: "\(remainingCount) items left in the full guide.",
+                primaryTitle: isLastStage ? "Complete Plan" : "Next Stage",
+                primarySystemImage: isLastStage ? "checkmark.seal" : "arrow.right",
+                secondaryTitle: "Reset Stage",
                 secondarySystemImage: "arrow.counterclockwise",
                 usesSolidBackground: isHighContrastMode,
-                primaryAction: { isConfirmingFinish = true },
-                secondaryAction: resetChecklist
+                primaryAction: {
+                    if isLastStage {
+                        isConfirmingFinish = true
+                    } else {
+                        attemptNextStage()
+                    }
+                },
+                secondaryAction: resetCurrentStage
             )
         } else {
             ArcBottomActionBar(
-                title: nextPendingItem?.title ?? "Next shot",
-                subtitle: "\(remainingCount) remaining • \(completionProgress.formatted(.percent.precision(.fractionLength(0)))) complete",
+                title: nextPendingItem?.title ?? "Next field item",
+                subtitle: "\(remainingCount) unresolved • \(completionProgress.formatted(.percent.precision(.fractionLength(0)))) complete",
                 primaryTitle: "Mark Next",
                 primarySystemImage: "checkmark.circle.fill",
-                secondaryTitle: "Reset",
-                secondarySystemImage: "arrow.counterclockwise",
+                secondaryTitle: isLastStage ? "Safety Net" : "Next Stage",
+                secondarySystemImage: isLastStage ? "lifepreserver" : "arrow.right",
                 usesSolidBackground: isHighContrastMode,
                 primaryAction: completeNextItem,
-                secondaryAction: resetChecklist
+                secondaryAction: {
+                    if isLastStage {
+                        isPresentingSafetyNet = true
+                    } else {
+                        attemptNextStage()
+                    }
+                }
             )
+        }
+    }
+
+    private var isLastStage: Bool {
+        guard let currentStagePosition else {
+            return true
+        }
+
+        return currentStagePosition >= fieldStages.count - 1
+    }
+
+    private var stageAdvanceWarningText: String {
+        let titles = blockingItemsForStageAdvance.map(\.title)
+        guard !titles.isEmpty else {
+            return "Some current-stage items are still unresolved."
+        }
+
+        return "Still missing: \(titles.prefix(4).joined(separator: ", "))."
+    }
+
+    private var blockingItemsForStageAdvance: [ShootPlanItem] {
+        guard let currentStage else {
+            return []
+        }
+
+        return currentStage.items.filter { item in
+            !item.isResolved && (item.priority == .must || item.isBeforeLeaving)
         }
     }
 
     private func toggleItemCompletion(_ item: ShootPlanItem) {
         withAnimation(.easeInOut(duration: 0.18)) {
             item.isCaptured.toggle()
+            if item.isCaptured {
+                item.isSkipped = false
+            }
         }
 
         photoAttachmentError = nil
         hasDismissedCompletionPrompt = false
         playImpact(item.isCaptured ? .medium : .light)
+        saveChanges()
+    }
+
+    private func toggleItemSkipped(_ item: ShootPlanItem) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            item.isSkipped.toggle()
+            if item.isSkipped {
+                item.isCaptured = false
+            }
+        }
+
+        photoAttachmentError = nil
+        hasDismissedCompletionPrompt = false
+        playImpact(.light)
         saveChanges()
     }
 
@@ -314,10 +420,11 @@ struct FieldView: View {
         toggleItemCompletion(nextPendingItem)
     }
 
-    private func resetChecklist() {
+    private func resetCurrentStage() {
         withAnimation(.easeInOut(duration: 0.18)) {
-            for item in planItems {
+            for item in currentStage?.items ?? [] {
                 item.isCaptured = false
+                item.isSkipped = false
             }
         }
 
@@ -325,6 +432,40 @@ struct FieldView: View {
         hasDismissedCompletionPrompt = false
         playImpact(.heavy)
         saveChanges()
+    }
+
+    private func previousStage() {
+        guard let currentStagePosition, currentStagePosition > 0, let plan else {
+            return
+        }
+
+        plan.currentStageOrderIndex = fieldStages[currentStagePosition - 1].orderIndex
+        saveChanges()
+        playImpact(.light)
+    }
+
+    private func attemptNextStage() {
+        guard let currentStagePosition, currentStagePosition < fieldStages.count - 1 else {
+            return
+        }
+
+        pendingStageOrderIndex = fieldStages[currentStagePosition + 1].orderIndex
+        if blockingItemsForStageAdvance.isEmpty {
+            advanceToPendingStage()
+        } else {
+            isConfirmingStageAdvance = true
+        }
+    }
+
+    private func advanceToPendingStage() {
+        guard let pendingStageOrderIndex, let plan else {
+            return
+        }
+
+        plan.currentStageOrderIndex = pendingStageOrderIndex
+        self.pendingStageOrderIndex = nil
+        saveChanges()
+        playImpact(.light)
     }
 
     private func finishShoot() {
@@ -364,6 +505,7 @@ struct FieldView: View {
                     item.capturedPhotoData = storedData
                     item.capturedPhotoAttachedAt = Date()
                     item.isCaptured = true
+                    item.isSkipped = false
                 }
 
                 photoAttachmentError = nil
@@ -386,6 +528,43 @@ struct FieldView: View {
         photoAttachmentError = nil
         saveChanges()
         playImpact(.light)
+    }
+
+    private func addSafetyNetItems() {
+        guard let plan, let currentStage else {
+            return
+        }
+
+        let nextOrderIndex = (planItems.map(\.orderIndex).max() ?? -1) + 1
+        let drafts = [
+            FieldGuideItemDraft(title: "Wide shot of where you are", guidance: "Hold for at least 8 to 10 seconds.", kind: .shot, priority: .must),
+            FieldGuideItemDraft(title: "Close-up of one useful detail", guidance: "Capture texture, sign, food, gear, hands, or an object.", kind: .shot, priority: .must),
+            FieldGuideItemDraft(title: "Hands or feet doing something", guidance: "Give the edit a human action cutaway.", kind: .shot, priority: .optional),
+            FieldGuideItemDraft(title: "Natural sound", guidance: "Record 10 seconds without talking.", kind: .sound, priority: .must),
+            FieldGuideItemDraft(title: "Honest reaction", guidance: "Say one line about what changed, surprised you, or mattered.", kind: .voice, priority: .must),
+            FieldGuideItemDraft(title: "Leaving shot", guidance: "Show yourself moving on from this place.", kind: .transition, priority: .must, isBeforeLeaving: true)
+        ]
+
+        for (offset, draft) in drafts.enumerated() {
+            let item = ShootPlanItem(
+                orderIndex: nextOrderIndex + offset,
+                title: draft.title,
+                role: draft.kind.title,
+                guidance: draft.guidance,
+                stageTitle: currentStage.title,
+                stageOrderIndex: currentStage.orderIndex,
+                kind: draft.kind,
+                priority: draft.priority,
+                isBeforeLeaving: draft.isBeforeLeaving,
+                plan: plan
+            )
+            modelContext.insert(item)
+            plan.items.append(item)
+        }
+
+        saveChanges()
+        isPresentingSafetyNet = false
+        playNotification(.success)
     }
 
     private func saveChanges() {
@@ -423,12 +602,13 @@ struct FieldView: View {
 private struct FieldExecutionHeader: View {
     let locationName: String
     let plan: ShootPlan?
+    let currentStage: FieldGuideStage?
     let referenceStatus: String?
     let isHighContrast: Bool
 
     var body: some View {
         ArcCompactHeroHeader(
-            systemImage: "checklist.checked",
+            systemImage: plan?.source == .importedText ? "rectangle.stack.fill" : "checklist.checked",
             title: locationName,
             summary: summary,
             tint: ArcPalette.tint
@@ -437,11 +617,10 @@ private struct FieldExecutionHeader: View {
         if let plan {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    ArcStatusPill(plan.source.title, systemImage: plan.source == .importedText ? "square.and.arrow.down" : "mappin.and.ellipse")
                     ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
                     ArcStatusPill(plan.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
                     ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
-                    ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
-                    ArcStatusPill(plan.shootWindowMode == .now ? "Now" : "Custom", systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
 
                     if let referenceStatus {
                         ArcStatusPill(referenceStatus, systemImage: "arrow.down.circle", tint: ArcPalette.tint)
@@ -457,77 +636,181 @@ private struct FieldExecutionHeader: View {
 
     private var summary: String {
         guard let plan else {
-            return "No active shot list"
+            return "No active field guide"
         }
 
-        return "\(plan.outputIntent.title) • \(plan.captureMedium.title) • \(plan.targetPlatform.title)"
+        if let currentStage {
+            return "Current stage: \(currentStage.title)"
+        }
+
+        return "\(plan.outputIntent.title) - \(plan.captureMedium.title) - \(plan.targetPlatform.title)"
     }
 }
 
 private struct FieldProgressPanel: View {
     let completedCount: Int
+    let skippedCount: Int
     let totalCount: Int
     let remainingCount: Int
     let progress: Double
-    let nextPendingTitle: String?
     let isHighContrast: Bool
 
     var body: some View {
         ArcDenseCard(accent: ArcPalette.tint) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
-                    ArcMetricTile(title: "Complete", value: "\(completedCount)/\(totalCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
-                    ArcMetricTile(title: "Remaining", value: "\(remainingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
+                    ArcMetricTile(title: "Captured", value: "\(completedCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
+                    ArcMetricTile(title: "Skipped", value: "\(skippedCount)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
+                    ArcMetricTile(title: "Missing", value: "\(remainingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
                 }
 
                 VStack(spacing: 10) {
-                    ArcMetricTile(title: "Complete", value: "\(completedCount)/\(totalCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
-                    ArcMetricTile(title: "Remaining", value: "\(remainingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
+                    ArcMetricTile(title: "Captured", value: "\(completedCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
+                    ArcMetricTile(title: "Skipped", value: "\(skippedCount)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
+                    ArcMetricTile(title: "Missing", value: "\(remainingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
                 }
             }
 
             FieldProgressSection(
                 progress: progress,
-                nextPendingTitle: nextPendingTitle,
+                resolvedText: "\(completedCount + skippedCount)/\(totalCount) resolved",
                 isHighContrast: isHighContrast
             )
         }
     }
 }
 
-private struct FieldChecklistCard: View {
-    let items: [ShootPlanItem]
+private struct FieldStageNavigator: View {
+    let stage: FieldGuideStage
+    let currentPosition: Int
+    let totalStages: Int
     let isHighContrast: Bool
-    let toggleItem: (ShootPlanItem) -> Void
+    let previousAction: () -> Void
+    let nextAction: () -> Void
+
+    var body: some View {
+        ArcDenseCard(accent: ArcPalette.glowSecondary) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Stage \(currentPosition + 1) of \(totalStages)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Text(stage.title)
+                        .font(isHighContrast ? .title2.weight(.semibold) : .headline)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("\(stage.resolvedCount)/\(stage.items.count) resolved")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 8) {
+                    Button(action: previousAction) {
+                        Image(systemName: "chevron.left")
+                            .frame(width: 38, height: 30)
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(currentPosition == 0)
+                    .accessibilityLabel("Previous stage")
+
+                    Button(action: nextAction) {
+                        Image(systemName: "chevron.right")
+                            .frame(width: 38, height: 30)
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(currentPosition >= totalStages - 1)
+                    .accessibilityLabel("Next stage")
+                }
+            }
+
+            FieldProgressBar(progress: stage.progress)
+                .frame(height: 8)
+        }
+    }
+}
+
+private struct FieldStageCard: View {
+    let stage: FieldGuideStage
+    let isHighContrast: Bool
+    let toggleCaptured: (ShootPlanItem) -> Void
+    let toggleSkipped: (ShootPlanItem) -> Void
     let attachPhoto: (PhotosPickerItem?, ShootPlanItem) -> Void
     let removePhoto: (ShootPlanItem) -> Void
+    let editNote: (ShootPlanItem) -> Void
+
+    private var mustCaptureItems: [ShootPlanItem] {
+        stage.items.filter { !$0.isBeforeLeaving && $0.priority == .must && ![.voice, .sound, .transition].contains($0.kind) }
+    }
+
+    private var optionalItems: [ShootPlanItem] {
+        stage.items.filter { !$0.isBeforeLeaving && $0.priority == .optional && ![.voice, .sound, .transition].contains($0.kind) }
+    }
+
+    private var voiceSoundTransitionItems: [ShootPlanItem] {
+        stage.items.filter { !$0.isBeforeLeaving && [.voice, .sound, .transition].contains($0.kind) }
+    }
+
+    private var beforeLeavingItems: [ShootPlanItem] {
+        stage.items.filter(\.isBeforeLeaving)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ArcFeatureTitle(
+            FieldItemSection(
+                title: "Must Capture",
                 systemImage: "checklist",
-                title: "Shot List",
-                subtitle: nil,
-                accent: ArcPalette.tint
+                items: mustCaptureItems,
+                emptyText: "No must-capture items in this stage.",
+                isHighContrast: isHighContrast,
+                toggleCaptured: toggleCaptured,
+                toggleSkipped: toggleSkipped,
+                attachPhoto: attachPhoto,
+                removePhoto: removePhoto,
+                editNote: editNote
             )
 
-            VStack(spacing: 12) {
-                ForEach(items) { item in
-                    FieldChecklistRow(
-                        item: item,
-                        isHighContrast: isHighContrast,
-                        toggleItem: {
-                            toggleItem(item)
-                        },
-                        attachPhoto: { pickerItem in
-                            attachPhoto(pickerItem, item)
-                        },
-                        removePhoto: {
-                            removePhoto(item)
-                        }
-                    )
-                }
-            }
+            FieldItemSection(
+                title: "Voice / Sound / Transition",
+                systemImage: "waveform",
+                items: voiceSoundTransitionItems,
+                emptyText: "No voice, sound, or transition prompts.",
+                isHighContrast: isHighContrast,
+                toggleCaptured: toggleCaptured,
+                toggleSkipped: toggleSkipped,
+                attachPhoto: attachPhoto,
+                removePhoto: removePhoto,
+                editNote: editNote
+            )
+
+            FieldItemSection(
+                title: "Optional",
+                systemImage: "sparkles",
+                items: optionalItems,
+                emptyText: "No optional items in this stage.",
+                isHighContrast: isHighContrast,
+                toggleCaptured: toggleCaptured,
+                toggleSkipped: toggleSkipped,
+                attachPhoto: attachPhoto,
+                removePhoto: removePhoto,
+                editNote: editNote
+            )
+
+            FieldItemSection(
+                title: "Before You Leave",
+                systemImage: "figure.walk.departure",
+                items: beforeLeavingItems,
+                emptyText: "No before-leaving checks.",
+                isHighContrast: isHighContrast,
+                toggleCaptured: toggleCaptured,
+                toggleSkipped: toggleSkipped,
+                attachPhoto: attachPhoto,
+                removePhoto: removePhoto,
+                editNote: editNote
+            )
         }
         .padding(isHighContrast ? 18 : 20)
         .background(isHighContrast ? Color(uiColor: .secondarySystemBackground) : ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -538,102 +821,44 @@ private struct FieldChecklistCard: View {
     }
 }
 
-private struct FieldGuidanceCard: View {
-    let location: ShootLocation
-    let outputIntentTitle: String
+private struct FieldItemSection: View {
+    let title: String
+    let systemImage: String
+    let items: [ShootPlanItem]
+    let emptyText: String
     let isHighContrast: Bool
+    let toggleCaptured: (ShootPlanItem) -> Void
+    let toggleSkipped: (ShootPlanItem) -> Void
+    let attachPhoto: (PhotosPickerItem?, ShootPlanItem) -> Void
+    let removePhoto: (ShootPlanItem) -> Void
+    let editNote: (ShootPlanItem) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             ArcFeatureTitle(
-                systemImage: "eye.fill",
-                title: "Reminders",
-                subtitle: nil,
-                accent: ArcPalette.glowSecondary
+                systemImage: systemImage,
+                title: title,
+                subtitle: items.isEmpty ? nil : "\(items.filter(\.isResolved).count)/\(items.count) resolved",
+                accent: title == "Before You Leave" ? ArcPalette.glowPrimary : ArcPalette.tint
             )
 
-            FieldGuidanceRow(
-                systemImage: "sparkles.rectangle.stack",
-                title: "Stay on brief",
-                subtitle: "Keep the \(outputIntentTitle) set coherent while capturing \(location.name)."
-            )
-
-            FieldGuidanceRow(
-                systemImage: "mountain.2.fill",
-                title: "Open wide first",
-                subtitle: "Anchor \(location.name) before moving into details."
-            )
-
-            FieldGuidanceRow(
-                systemImage: "sun.haze.fill",
-                title: "Protect highlights",
-                subtitle: "Bias a touch darker if the sky or reflections start to clip."
-            )
-
-            FieldGuidanceRow(
-                systemImage: "rectangle.portrait.and.arrow.right",
-                title: "Grab one vertical cutaway",
-                subtitle: "Leave with one detail or motion frame for the edit."
-            )
-        }
-        .padding(20)
-        .background(isHighContrast ? Color(uiColor: .secondarySystemBackground) : ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
-        }
-    }
-}
-
-private struct FieldPlanRequiredCard: View {
-    var body: some View {
-        ArcFeatureCard(accent: ArcPalette.glowPrimary) {
-            ArcFeatureTitle(
-                systemImage: "checklist",
-                title: "No active shot list",
-                subtitle: nil,
-                accent: ArcPalette.glowPrimary
-            )
-
-            Text("Start a new capture plan from Capture Plans to generate a field-ready shot list.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct FieldProgressSection: View {
-    let progress: Double
-    let nextPendingTitle: String?
-    let isHighContrast: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Progress")
-                    .font(.caption.weight(.medium))
+            if items.isEmpty {
+                Text(emptyText)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text(progress.formatted(.percent.precision(.fractionLength(0))))
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(ArcPalette.tint)
+            } else {
+                ForEach(items) { item in
+                    FieldChecklistRow(
+                        item: item,
+                        isHighContrast: isHighContrast,
+                        toggleCaptured: { toggleCaptured(item) },
+                        toggleSkipped: { toggleSkipped(item) },
+                        attachPhoto: { pickerItem in attachPhoto(pickerItem, item) },
+                        removePhoto: { removePhoto(item) },
+                        editNote: { editNote(item) }
+                    )
+                }
             }
-
-            FieldProgressBar(progress: progress)
-
-            Label(nextPendingTitle ?? "Shot list wrapped", systemImage: "camera.metering.center.weighted.average")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .padding(14)
-        .background(isHighContrast ? Color(uiColor: .systemBackground) : ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
@@ -641,9 +866,11 @@ private struct FieldProgressSection: View {
 private struct FieldChecklistRow: View {
     let item: ShootPlanItem
     let isHighContrast: Bool
-    let toggleItem: () -> Void
+    let toggleCaptured: () -> Void
+    let toggleSkipped: () -> Void
     let attachPhoto: (PhotosPickerItem?) -> Void
     let removePhoto: () -> Void
+    let editNote: () -> Void
 
     private var thumbnailImage: UIImage? {
         guard let data = item.capturedPhotoData else {
@@ -657,37 +884,47 @@ private struct FieldChecklistRow: View {
         let hasAttachedPhoto = item.capturedPhotoData != nil
 
         VStack(alignment: .leading, spacing: 12) {
-            Button(action: toggleItem) {
-                HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                Button(action: toggleCaptured) {
                     Image(systemName: item.isCaptured ? "checkmark.circle.fill" : "circle")
                         .font((isHighContrast ? Font.title2 : .title3).weight(.semibold))
                         .foregroundStyle(item.isCaptured ? ArcPalette.tint : .secondary)
                         .padding(.top, 2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(item.isCaptured ? "Mark not captured" : "Mark captured")
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(item.title)
-                                .font(isHighContrast ? .title3.weight(.semibold) : .headline)
-                                .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(item.title)
+                            .font(isHighContrast ? .title3.weight(.semibold) : .headline)
+                            .foregroundStyle(item.isSkipped ? .secondary : .primary)
+                            .strikethrough(item.isSkipped)
 
-                            Spacer(minLength: 0)
+                        Spacer(minLength: 0)
 
-                            Text(item.role)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(ArcPalette.tint.opacity(0.14), in: Capsule())
-                                .foregroundStyle(ArcPalette.tint)
+                        HStack(spacing: 6) {
+                            ArcStatusPill(item.displayRoleTitle, systemImage: item.kind.systemImage, tint: item.isBeforeLeaving ? ArcPalette.glowPrimary : ArcPalette.tint)
+
+                            if item.priority == .must {
+                                ArcStatusPill("Must", systemImage: "exclamationmark", tint: ArcPalette.glowPrimary)
+                            }
                         }
+                    }
 
-                        Text(item.guidance)
-                            .font(isHighContrast ? .body : .subheadline)
-                            .foregroundStyle(isHighContrast ? .primary : .secondary)
+                    Text(item.guidance)
+                        .font(isHighContrast ? .body : .subheadline)
+                        .foregroundStyle(isHighContrast ? .primary : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !item.fieldNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Label(item.fieldNote, systemImage: "note.text")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
-            .buttonStyle(.plain)
 
             if let thumbnailImage {
                 Image(uiImage: thumbnailImage)
@@ -701,27 +938,13 @@ private struct FieldChecklistRow: View {
                     }
             }
 
-            HStack(spacing: 10) {
-                PhotosPicker(
-                    selection: Binding<PhotosPickerItem?>(
-                        get: { nil },
-                        set: { attachPhoto($0) }
-                    ),
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) {
-                    Label(hasAttachedPhoto ? "Replace Snap" : "Add Snap", systemImage: "camera.fill")
-                        .frame(maxWidth: .infinity)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    actionButtons(hasAttachedPhoto: hasAttachedPhoto)
                 }
-                .buttonStyle(.glass)
 
-                if hasAttachedPhoto {
-                    Button(role: .destructive, action: removePhoto) {
-                        Image(systemName: "trash")
-                            .frame(width: 44, height: 20)
-                    }
-                    .buttonStyle(.glass)
-                    .accessibilityLabel("Remove attached snap")
+                VStack(spacing: 8) {
+                    actionButtons(hasAttachedPhoto: hasAttachedPhoto)
                 }
             }
         }
@@ -730,7 +953,105 @@ private struct FieldChecklistRow: View {
         .background(isHighContrast ? Color(uiColor: .systemBackground) : ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(item.isCaptured ? ArcPalette.tint.opacity(isHighContrast ? 0.75 : 0.45) : (isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke), lineWidth: isHighContrast ? 1.5 : 1)
+                .stroke(rowStrokeColor, lineWidth: isHighContrast ? 1.5 : 1)
+        }
+    }
+
+    private var rowStrokeColor: Color {
+        if item.isCaptured {
+            return ArcPalette.tint.opacity(isHighContrast ? 0.75 : 0.45)
+        }
+
+        if item.isSkipped {
+            return ArcPalette.glowSecondary.opacity(isHighContrast ? 0.75 : 0.45)
+        }
+
+        return isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke
+    }
+
+    private func actionButtons(hasAttachedPhoto: Bool) -> some View {
+        Group {
+            Button(action: toggleSkipped) {
+                Label(item.isSkipped ? "Unskip" : "Skip", systemImage: "forward")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+
+            Button(action: editNote) {
+                Label(item.fieldNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Note" : "Edit Note", systemImage: "note.text")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+
+            PhotosPicker(
+                selection: Binding<PhotosPickerItem?>(
+                    get: { nil },
+                    set: { attachPhoto($0) }
+                ),
+                matching: .images,
+                photoLibrary: .shared()
+            ) {
+                Label(hasAttachedPhoto ? "Replace" : "Snap", systemImage: "camera.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+
+            if hasAttachedPhoto {
+                Button(role: .destructive, action: removePhoto) {
+                    Image(systemName: "trash")
+                        .frame(width: 44, height: 20)
+                }
+                .buttonStyle(.glass)
+                .accessibilityLabel("Remove attached snap")
+            }
+        }
+    }
+}
+
+private struct FieldGuidanceCard: View {
+    let location: ShootLocation
+    let plan: ShootPlan
+    let isHighContrast: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ArcFeatureTitle(
+                systemImage: "eye.fill",
+                title: plan.source == .importedText ? "Story Guide" : "Reminders",
+                subtitle: nil,
+                accent: ArcPalette.glowSecondary
+            )
+
+            if plan.source == .importedText, !plan.storySummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(plan.storySummary)
+                    .font(isHighContrast ? .body : .subheadline)
+                    .foregroundStyle(isHighContrast ? .primary : .secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                FieldGuidanceRow(
+                    systemImage: "sparkles.rectangle.stack",
+                    title: "Stay on brief",
+                    subtitle: "Keep the \(plan.outputIntent.title) set coherent while capturing \(location.name)."
+                )
+
+                FieldGuidanceRow(
+                    systemImage: "mountain.2.fill",
+                    title: "Open wide first",
+                    subtitle: "Anchor \(location.name) before moving into details."
+                )
+
+                FieldGuidanceRow(
+                    systemImage: "rectangle.portrait.and.arrow.right",
+                    title: "Grab one vertical cutaway",
+                    subtitle: "Leave with one detail or motion frame for the edit."
+                )
+            }
+        }
+        .padding(20)
+        .background(isHighContrast ? Color(uiColor: .secondarySystemBackground) : ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
@@ -752,6 +1073,163 @@ private struct FieldGuidanceRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct FieldPlanRequiredCard: View {
+    var body: some View {
+        ArcFeatureCard(accent: ArcPalette.glowPrimary) {
+            ArcFeatureTitle(
+                systemImage: "checklist",
+                title: "No active field guide",
+                subtitle: nil,
+                accent: ArcPalette.glowPrimary
+            )
+
+            Text("Start or import a capture plan from Capture Plans to create a field-ready guide.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct FieldProgressSection: View {
+    let progress: Double
+    let resolvedText: String
+    let isHighContrast: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Progress")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(progress.formatted(.percent.precision(.fractionLength(0))))
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(ArcPalette.tint)
+            }
+
+            FieldProgressBar(progress: progress)
+
+            Label(resolvedText, systemImage: "camera.metering.center.weighted.average")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(14)
+        .background(isHighContrast ? Color(uiColor: .systemBackground) : ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
+        }
+    }
+}
+
+private struct SafetyNetSheet: View {
+    let addItems: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    private let items = [
+        ("Wide shot", "Show where you are."),
+        ("Close detail", "Capture one object, texture, sign, food, or piece of gear."),
+        ("Human action", "Hands, feet, walking, packing, checking, eating, opening."),
+        ("Natural sound", "Record 10 seconds without talking."),
+        ("Honest reaction", "Say one line about what changed or mattered."),
+        ("Leaving shot", "Show the transition away from this place.")
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ArcCompactHeroHeader(
+                        systemImage: "lifepreserver",
+                        title: "Story Safety Net",
+                        summary: "When you feel lost, capture this recovery set."
+                    )
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+
+                Section("Recovery Set") {
+                    ForEach(items, id: \.0) { item in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.0)
+                                .font(.headline)
+                            Text(item.1)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(ArcSceneBackground())
+            .navigationTitle("Safety Net")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Add") {
+                        addItems()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct FieldNoteEditorSheet: View {
+    let item: ShootPlanItem
+    let onSave: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var note: String
+
+    init(item: ShootPlanItem, onSave: @escaping () -> Void) {
+        self.item = item
+        self.onSave = onSave
+        _note = State(initialValue: item.fieldNote)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(item.title) {
+                    TextField("Field note", text: $note, axis: .vertical)
+                        .lineLimit(5, reservesSpace: true)
+                }
+            }
+            .navigationTitle("Field Note")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        item.fieldNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                        onSave()
+                        dismiss()
+                    }
+                }
             }
         }
     }

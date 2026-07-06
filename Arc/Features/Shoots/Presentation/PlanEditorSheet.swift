@@ -44,6 +44,10 @@ struct PlanEditorSheet: View {
         location.plan?.orderedItems ?? []
     }
 
+    private var visibleSections: [PlanEditorSection] {
+        location.plan?.source == .importedText ? [.checklist] : PlanEditorSection.allCases
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -60,7 +64,7 @@ struct PlanEditorSheet: View {
 
                 Section {
                     Picker("Plan section", selection: $selectedSection) {
-                        ForEach(PlanEditorSection.allCases) { section in
+                        ForEach(visibleSections) { section in
                             Text(section.title).tag(section)
                         }
                     }
@@ -91,6 +95,11 @@ struct PlanEditorSheet: View {
             .background(ArcSceneBackground())
             .navigationTitle("Capture Plan")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                if !visibleSections.contains(selectedSection) {
+                    selectedSection = .checklist
+                }
+            }
             .onChange(of: viewModel.shootStartTime) { _, _ in
                 viewModel.ensureDefaultWindowTimes()
                 clearPendingRegeneration()

@@ -12,6 +12,14 @@ Arc is a privacy-conscious, performance-sensitive iOS app built with SwiftUI, Sw
 - Core UX: location selection, planning, field execution, and review for solo creators.
 - Key constraints: fast startup, responsive UI, strong privacy defaults, low operational risk, and readable outdoor field-mode experiences.
 
+## Project Documentation
+
+- Before non-trivial work, read [docs/00-index.md](docs/00-index.md).
+- Scope all work against the current phase in [docs/08-roadmap.md](docs/08-roadmap.md) and respect phase non-goals.
+- Update the owning doc in the same change as any behavior or model change.
+- ADRs in [docs/adr/](docs/adr/) are binding.
+- Precedence: AGENTS.md governs conduct, docs/ governs what to build, docs/08-roadmap.md governs what to build now.
+
 ## Non-Negotiable Rules
 
 - Never hardcode API keys, secrets, tokens, or personal data in source code, previews, tests, logs, or documentation.
@@ -19,7 +27,7 @@ Arc is a privacy-conscious, performance-sensitive iOS app built with SwiftUI, Sw
 - Prefer Apple frameworks first when they satisfy the requirement well.
 - Do not add third-party dependencies unless the existing platform APIs are clearly insufficient and the tradeoff is justified.
 - Do not weaken privacy, transport security, or permission boundaries to make a feature easier to implement.
-- Do not introduce background execution, background location, or persistent tracking without an explicit product requirement.
+- Do not introduce background execution, background location, or persistent tracking without an explicit product requirement. Scoped exception recorded in docs/adr/ADR-0007-while-in-use-location-surfacing.md.
 - Fix the root cause when practical. Avoid superficial patches that leave the design worse.
 
 ## Repository Architecture

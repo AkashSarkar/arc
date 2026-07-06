@@ -57,6 +57,26 @@ final class LocationEditorViewModel {
         isEditing ? "Update" : "Save"
     }
 
+    var selectionTitle: String {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleanName.isEmpty ? "Unnamed location" : cleanName
+    }
+
+    var hasLocationName: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var hasSelectedCoordinate: Bool {
+        selectedCoordinate != nil
+    }
+
+    var canConfirmSelection: Bool {
+        hasLocationName &&
+        hasSelectedCoordinate &&
+        !isResolvingCurrentLocation &&
+        !isResolvingSearchResult
+    }
+
     var coordinateSummary: String {
         guard let selectedCoordinate else {
             return "No coordinates selected yet."
@@ -131,7 +151,6 @@ final class LocationEditorViewModel {
         do {
             let coordinate = try await currentLocationService.requestCurrentLocation()
             applyCoordinate(coordinate, shouldFocusMap: true)
-            updateSearchDisplay("Current GPS")
             scheduleReverseGeocoding(
                 for: coordinate,
                 forceNameUpdate: true,
@@ -152,11 +171,7 @@ final class LocationEditorViewModel {
         do {
             let selection = try await searchService.resolveSuggestion(suggestion)
             applySelection(selection, forceNameUpdate: true)
-            let displayQuery = [suggestion.title, suggestion.subtitle]
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .joined(separator: ", ")
-            updateSearchDisplay(displayQuery.isEmpty ? suggestion.title : displayQuery)
+            clearSearchInput()
             suggestions = []
         } catch {
             errorMessage = error.localizedDescription
@@ -177,7 +192,7 @@ final class LocationEditorViewModel {
         do {
             let selection = try await searchService.search(query: cleanQuery)
             applySelection(selection, forceNameUpdate: true)
-            updateSearchDisplay(cleanQuery)
+            clearSearchInput()
             suggestions = []
         } catch {
             errorMessage = error.localizedDescription
@@ -397,9 +412,9 @@ final class LocationEditorViewModel {
         return LocationCoordinate(latitude: latitude, longitude: longitude)
     }
 
-    private func updateSearchDisplay(_ query: String) {
+    private func clearSearchInput() {
         isApplyingSearchQuery = true
-        searchQuery = query
+        searchQuery = ""
         isApplyingSearchQuery = false
     }
 

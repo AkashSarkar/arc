@@ -22,7 +22,7 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            LocationListView(
+            ShootsView(
                 aiService: aiService,
                 apiKeyStore: apiKeyStore,
                 defaultAIConfiguration: defaultAIConfiguration,

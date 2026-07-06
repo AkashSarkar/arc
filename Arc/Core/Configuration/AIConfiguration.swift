@@ -26,7 +26,7 @@ struct AIConfiguration {
         let baseURLString = bundle.object(forInfoDictionaryKey: "AI_BASE_URL") as? String ?? "https://api.openai.com/v1"
         let modelName = bundle.object(forInfoDictionaryKey: "AI_MODEL_NAME") as? String ?? "gpt-4o-mini"
         let timeoutSeconds = bundle.object(forInfoDictionaryKey: "AI_TIMEOUT_SECONDS") as? TimeInterval ?? 30
-        let maxTokens = bundle.object(forInfoDictionaryKey: "AI_MAX_TOKENS") as? Int ?? 800
+        let maxTokens = bundle.object(forInfoDictionaryKey: "AI_MAX_TOKENS") as? Int ?? 1200
         let temperature = bundle.object(forInfoDictionaryKey: "AI_TEMPERATURE") as? Double ?? 0.2
         let requestsPerMinute = bundle.object(forInfoDictionaryKey: "AI_REQUESTS_PER_MINUTE") as? Int ?? 20
         let rawAPIKeyAccount = bundle.object(forInfoDictionaryKey: "AI_API_KEY_ACCOUNT") as? String ?? "arc.ai.default"

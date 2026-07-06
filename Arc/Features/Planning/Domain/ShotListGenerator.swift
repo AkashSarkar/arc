@@ -2,6 +2,9 @@ import Foundation
 
 struct ShotListGenerationInput {
     let outputIntent: OutputIntent
+    let captureMedium: CaptureMedium
+    let targetPlatform: TargetPlatform
+    let stylePreset: CaptureStylePreset
     let notes: String
     let shootWindowMode: ShootWindowMode
     let shootWindowStart: Date
@@ -48,6 +51,9 @@ struct ShotListGenerator: ShotListGenerating {
         var promptSections = [
             "You are a cinematographer and photo director planning a shoot.",
             "Generate a \(input.outputIntent.defaultShotCount)-shot list optimized for a \(input.outputIntent.promptLabel).",
+            "Capture medium: \(input.captureMedium.title). \(input.captureMedium.promptDirective)",
+            "Target platform: \(input.targetPlatform.title). \(input.targetPlatform.promptDirective)",
+            "Creative style: \(input.stylePreset.title). \(input.stylePreset.promptDirective)",
             "Return exactly \(input.outputIntent.defaultShotCount) lines in this exact format:",
             "<short shot title> | <role: establishing/detail/subject/transition/hero/closer> | <practical guidance with composition, focal range, settings hint, timing, and rationale>",
             "Do not return JSON.",

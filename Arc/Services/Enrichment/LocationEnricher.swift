@@ -1,7 +1,7 @@
 import Foundation
 
 protocol LocationEnriching {
-    func enrich(location: ShootLocation, shootWindow: DateInterval?) async -> LocationContextBundle
+    func enrich(location: Stop, shootWindow: DateInterval?) async -> LocationContextBundle
 }
 
 struct LocationEnricher: LocationEnriching {
@@ -30,10 +30,10 @@ struct LocationEnricher: LocationEnriching {
         self.sunMoonCalculator = sunMoonCalculator
     }
 
-    func enrich(location: ShootLocation, shootWindow: DateInterval?) async -> LocationContextBundle {
+    func enrich(location: Stop, shootWindow: DateInterval?) async -> LocationContextBundle {
         let locationName = location.name
-        let latitude = location.latitude
-        let longitude = location.longitude
+        let latitude = location.latitude ?? 0
+        let longitude = location.longitude ?? 0
         let resolvedShootWindow = shootWindow ?? defaultShootWindow(for: location)
         let generatedAt = Date()
 
@@ -143,30 +143,10 @@ struct LocationEnricher: LocationEnriching {
         }
     }
 
-    private func defaultShootWindow(for location: ShootLocation) -> DateInterval {
-        if let plan = location.plan, plan.shootWindowMode == .custom {
-            let calendar = Calendar.current
-            let dateComponents = calendar.dateComponents([.year, .month, .day], from: plan.shootDate)
-            let startTimeComponents = calendar.dateComponents([.hour, .minute], from: plan.shootStartTime)
-            let endTimeComponents = calendar.dateComponents([.hour, .minute], from: plan.shootEndTime)
-
-            let startComponents = DateComponents(
-                year: dateComponents.year,
-                month: dateComponents.month,
-                day: dateComponents.day,
-                hour: startTimeComponents.hour,
-                minute: startTimeComponents.minute
-            )
-            let endComponents = DateComponents(
-                year: dateComponents.year,
-                month: dateComponents.month,
-                day: dateComponents.day,
-                hour: endTimeComponents.hour,
-                minute: endTimeComponents.minute
-            )
-
-            let start = calendar.date(from: startComponents) ?? plan.shootDate
-            let end = calendar.date(from: endComponents) ?? start.addingTimeInterval(2 * 3600)
+    private func defaultShootWindow(for location: Stop) -> DateInterval {
+        if let day = location.day, day.windowMode == .custom, let startTime = day.startTime {
+            let start = startTime
+            let end = day.endTime ?? start.addingTimeInterval(2 * 3600)
             return DateInterval(start: start, end: max(end, start.addingTimeInterval(3600)))
         }
 

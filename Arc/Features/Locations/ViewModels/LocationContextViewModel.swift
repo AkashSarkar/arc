@@ -12,7 +12,7 @@ final class LocationContextViewModel {
     var errorMessage: String?
     var isRefreshing = false
 
-    init(location: ShootLocation, locationEnricher: any LocationEnriching) {
+    init(location: Stop, locationEnricher: any LocationEnriching) {
         self.locationEnricher = locationEnricher
         self.jsonDump = location.enrichmentJSON
         self.contextBundle = LocationContextBundle.decode(from: location.enrichmentJSON)
@@ -22,7 +22,7 @@ final class LocationContextViewModel {
         !jsonDump.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func refreshContext(for location: ShootLocation, modelContext: ModelContext) async {
+    func refreshContext(for location: Stop, modelContext: ModelContext) async {
         isRefreshing = true
         errorMessage = nil
 
@@ -43,40 +43,16 @@ final class LocationContextViewModel {
         }
     }
 
-    func loadCachedContext(from location: ShootLocation) {
+    func loadCachedContext(from location: Stop) {
         jsonDump = location.enrichmentJSON
         contextBundle = LocationContextBundle.decode(from: location.enrichmentJSON)
     }
 
-    private func resolvedShootWindow(for location: ShootLocation) -> DateInterval? {
-        guard let plan = location.plan, plan.shootWindowMode == .custom else {
+    private func resolvedShootWindow(for location: Stop) -> DateInterval? {
+        guard let day = location.day, day.windowMode == .custom, let start = day.startTime else {
             return nil
         }
-
-        let calendar = Calendar.current
-        let dateComponents = calendar.dateComponents([.year, .month, .day], from: plan.shootDate)
-        let startTimeComponents = calendar.dateComponents([.hour, .minute], from: plan.shootStartTime)
-        let endTimeComponents = calendar.dateComponents([.hour, .minute], from: plan.shootEndTime)
-
-        let startComponents = DateComponents(
-            year: dateComponents.year,
-            month: dateComponents.month,
-            day: dateComponents.day,
-            hour: startTimeComponents.hour,
-            minute: startTimeComponents.minute
-        )
-        let endComponents = DateComponents(
-            year: dateComponents.year,
-            month: dateComponents.month,
-            day: dateComponents.day,
-            hour: endTimeComponents.hour,
-            minute: endTimeComponents.minute
-        )
-
-        guard let start = calendar.date(from: startComponents), let end = calendar.date(from: endComponents) else {
-            return nil
-        }
-
+        let end = day.endTime ?? start.addingTimeInterval(2 * 3600)
         return DateInterval(start: start, end: max(end, start.addingTimeInterval(3600)))
     }
 }

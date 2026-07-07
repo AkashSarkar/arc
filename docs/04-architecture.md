@@ -2,7 +2,7 @@
 
 > **Agent Brief** — Status: Current | Applies to: All phases | Owner doc for: codebase layer map, DI, plan-creation flows, target module additions, known-debt register, platform sketch
 > Read [docs/00-index.md](00-index.md) first. Behavioral rules: /AGENTS.md (wins on conduct). Current build phase: see [docs/08-roadmap.md](08-roadmap.md).
-> Code pointers verified against ux-redesign @ abce4bc + uncommitted field-guide/docs-alignment work (2026-07-06). Re-verify line numbers before editing.
+> Code pointers verified against `task-owner-mvp-through-p4` after schema-v2 implementation (2026-07-07). Re-verify line numbers before editing.
 
 Companion docs: data shapes in [docs/05-data-model.md](05-data-model.md), import behavior in [docs/06-import-spec.md](06-import-spec.md), field UX in [docs/07-field-ux.md](07-field-ux.md), phase gating in [docs/08-roadmap.md](08-roadmap.md) and [docs/02-business.md](02-business.md).
 
@@ -10,7 +10,7 @@ Companion docs: data shapes in [docs/05-data-model.md](05-data-model.md), import
 
 ## 1. Current architecture
 
-Single iOS app target. SwiftUI + SwiftData, iOS 26. No test target, no extensions, no backend. All persistence and AI calls run on-device or direct-to-provider from the phone.
+Single iOS app target. SwiftUI + SwiftData, iOS 26. `ArcTests` exists for parser/codec/mapper coverage. No backend. All persistence and AI calls run on-device or direct-to-provider from the phone.
 
 ### 1.1 Layer map
 
@@ -25,10 +25,11 @@ Single iOS app target. SwiftUI + SwiftData, iOS 26. No test target, no extension
 | Services / AI | `Arc/Services/AI/` | `AIService.swift` (`AIServicing` protocol), `OpenAICompatibleAIService.swift` (T2 cloud path), `AIModels.swift` |
 | Services / Enrichment | `Arc/Services/Enrichment/` | `LocationEnricher.swift` (facade), `OverpassAPIClient.swift`, `WikipediaAPIClient.swift`, `FlickrAPIClient.swift`, `ReferenceImageCache.swift` (`DiskReferenceImageCache`), `OpenMeteoAPIClient.swift`, `SunMoonCalculator.swift` |
 | Services / Location | `Arc/Services/Location/` | `LocationInputServices.swift` (location pick / editor service factory) |
-| Features / Planning | `Arc/Features/Planning/` | Domain: `ShootPlan.swift` (`ShootPlan`, `ShootPlanItem` @Models), `FieldGuide.swift` (draft structs, uncommitted), `ImportedPlanParser.swift` (uncommitted), `ImportedPlanGenerator.swift` (uncommitted), `ShotListGenerator.swift`, `ShotPlanParser.swift`, `PlanningOptions.swift`. ViewModels: `PlanViewModel.swift`. Presentation: empty |
+| Features / Planning | `Arc/Features/Planning/` | Domain: import/parsing/planning value types and generators: `FieldGuide.swift`, `ImportedPlanParser.swift`, `ImportedPlanGenerator.swift`, `ShotListGenerator.swift`, `ShotPlanParser.swift`, `PlanningOptions.swift`. No SwiftData models live here now. |
+| Features / Trips | `Arc/Features/Trips/` | Domain: schema-v2 SwiftData model and document mapper: `Trip`, `TripArtifact`, `ShootDay`, `Stop`, `Stage`, `CaptureItem`, `TripDocumentMapper`. |
 | Features / Field | `Arc/Features/Field/Presentation/` | `FieldView.swift` (stage-by-stage execution) |
-| Features / Shoots | `Arc/Features/Shoots/` | Domain: `ShootDraftItem.swift`. Presentation: `NewShootFlowView.swift`, `ImportPlanFlowView.swift` (uncommitted), `CompletedShootView.swift`, `PlanEditorSheet.swift`, `ShootInfoSheet.swift`, `ShootPlanningComponents.swift`, `ShootsView.swift` |
-| Features / Locations | `Arc/Features/Locations/` | Domain: `ShootLocation.swift` (@Model), `LocationContextBundle.swift`. Presentation: `AddLocationView.swift`, `LocationContextView.swift`, `ShootSpotPickerView.swift`. ViewModels: `LocationContextViewModel.swift`, `LocationEditorViewModel.swift` |
+| Features / Shoots | `Arc/Features/Shoots/` | Domain: `ShootDraftItem.swift`. Presentation: `NewShootFlowView.swift`, `ImportPlanFlowView.swift`, `CompletedShootView.swift`, `PlanEditorSheet.swift`, `ShootInfoSheet.swift`, `ShootPlanningComponents.swift`, `ShootsView.swift` |
+| Features / Locations | `Arc/Features/Locations/` | Domain: `LocationContextBundle.swift`. Presentation: `AddLocationView.swift`, `LocationContextView.swift`, `ShootSpotPickerView.swift`. ViewModels: `LocationContextViewModel.swift`, `LocationEditorViewModel.swift`; these now edit/enrich `Stop`. |
 | Features / Settings | `Arc/Features/Settings/` | Domain: `LLMProfile.swift` (@Model). Presentation: `SettingsView.swift` |
 | Features / Home | `Arc/Features/Home/Presentation/` | `HomeView.swift` (root tab/navigation shell; receives all DI dependencies) |
 | Features / Review | `Arc/Features/Review/` | Empty `Presentation/` folder — review currently lives in `CompletedShootView.swift` under Shoots |
@@ -48,48 +49,51 @@ Single iOS app target. SwiftUI + SwiftData, iOS 26. No test target, no extension
 
 ### 1.3 SwiftData model container
 
-Registered in `ArcApp.swift:20`:
+Registered in `ArcApp.swift`:
 
 ```swift
-.modelContainer(for: [ShootLocation.self, ShootPlan.self, ShootPlanItem.self, LLMProfile.self])
+.modelContainer(for: [Trip.self, TripArtifact.self, ShootDay.self, Stop.self, Stage.self, CaptureItem.self, LLMProfile.self])
 ```
 
 | @Model | File | Notes |
 |---|---|---|
-| `ShootLocation` | `Arc/Features/Locations/Domain/ShootLocation.swift` | One plan per location; plans are only reachable through their location |
-| `ShootPlan` | `Arc/Features/Planning/Domain/ShootPlan.swift` | Cascade-deletes `items`; stages are computed, not stored (see 1.6) |
-| `ShootPlanItem` | `Arc/Features/Planning/Domain/ShootPlan.swift` | Carries `stageTitle` + `stageOrderIndex` strings/ints for grouping; `role` string plus `kindRawValue` |
+| `Trip` | `Arc/Features/Trips/Domain/TripModels.swift` | Root entity; owns days and artifacts |
+| `TripArtifact` | `Arc/Features/Trips/Domain/TripModels.swift` | `ideas`, `shootList`, or generated `script` body |
+| `ShootDay` | `Arc/Features/Trips/Domain/TripModels.swift` | Owns ordered stops |
+| `Stop` | `Arc/Features/Trips/Domain/TripModels.swift` | Physical place; optional coordinates; source geo anchor; enrichment cache |
+| `Stage` | `Arc/Features/Trips/Domain/TripModels.swift` | Ordered execution unit with persisted `goal` and `kind` |
+| `CaptureItem` | `Arc/Features/Trips/Domain/TripModels.swift` | Capturable item with provenance and optional photo |
 | `LLMProfile` | `Arc/Features/Settings/Domain/LLMProfile.swift` | Cloud AI provider/profile settings |
 
-Schema v2 (Trip / TripArtifact / ShootDay / Stop / Stage / CaptureItem) replaces this container in P2 via destructive store reset — see [docs/05-data-model.md](05-data-model.md), [docs/adr/ADR-0002-schema-v2-rebuild.md](adr/ADR-0002-schema-v2-rebuild.md), [docs/adr/ADR-0003-store-reset-pre-ship.md](adr/ADR-0003-store-reset-pre-ship.md).
+The old `ShootLocation` / `ShootPlan` / `ShootPlanItem` graph is deleted. See [docs/05-data-model.md](05-data-model.md), [docs/adr/ADR-0002-schema-v2-rebuild.md](adr/ADR-0002-schema-v2-rebuild.md), and [docs/adr/ADR-0003-store-reset-pre-ship.md](adr/ADR-0003-store-reset-pre-ship.md).
 
 ### 1.4 Plan creation flow (a): location-generated
 
 Entry: `NewShootFlowView.swift` (Shoots feature).
 
-1. User picks/creates a `ShootLocation` (location pick step; `ShootSpotPickerView` / `AddLocationView`).
+1. User picks/creates a `Stop` draft location (location pick step; `ShootSpotPickerView` / `AddLocationView`).
 2. User fills the brief (output intent, capture medium, target platform, style preset, shoot window — `PlanningOptions`).
-3. `generateDraft()` calls `locationEnricher.enrich(...)` — `LocationEnricher` fans out to Overpass (POIs), Wikipedia (summary), Flickr (reference images → `DiskReferenceImageCache`), Open-Meteo (weather), `SunMoonCalculator` (golden hour); result JSON is stored on the location (`enrichmentJSON`, `lastEnrichedAt`).
+3. `generateDraft()` calls `locationEnricher.enrich(...)` — `LocationEnricher` fans out to Overpass (POIs), Wikipedia (summary), Flickr (reference images → `DiskReferenceImageCache`), Open-Meteo (weather), `SunMoonCalculator` (golden hour); result JSON is stored on the stop (`enrichmentJSON`, `lastEnrichedAt`).
 4. `ShotListGenerator` (constructed in the view with `aiService` from `makeAIService`) builds the prompt from brief + enrichment context and calls `AIServicing` (`OpenAICompatibleAIService`, rate-limited).
 5. `ShotPlanParser` parses the raw model response into `PlannedShotDraft` values.
-6. User reviews/edits draft items, then commit inserts `ShootPlan` + `ShootPlanItem`s attached to the location and saves.
+6. User reviews/edits draft items, then commit inserts a one-day, one-stop `Trip` graph and saves.
 
-### 1.5 Plan creation flow (b): imported (uncommitted, being formalized in P1)
+### 1.5 Plan creation flow (b): imported / `.arcguide`
 
 Entry: `ImportPlanFlowView.swift` (Shoots feature).
 
-1. User pastes plan text (Apple Notes / ChatGPT markdown).
-2. `ImportedPlanParser` (T0 heuristic) parses it into a staged `FieldGuideDraft` (`FieldGuideStageDraft` with `goal`, `FieldGuideItemDraft`s).
-3. Optionally, `ImportedPlanGenerator` (T2 cloud) sends the text through `AIServicing` for cleanup → JSON → draft; on failure it falls back to the T0 parser.
-4. User edits the draft (stage titles, goals, items, priorities).
-5. Commit (`ImportPlanFlowView.swift:480-555`) requires a picked real location (guard at `:481`) and builds the `ShootLocation` from the picked coordinates (`:495-499`), then creates a `ShootPlan` with `source: .importedText` and flattened `ShootPlanItem`s; the item loop (`:522-545`) writes the stage `goal` edited in step 4 into the transitional `stageGoal` field (`:535`). Both P0 stopgaps (required location pick; transitional `stageGoal`) are implemented. P2 fixes both structurally with `Stage.goal` and optional `Stop` coordinates — see [docs/08-roadmap.md](08-roadmap.md), [docs/05-data-model.md](05-data-model.md), and [docs/06-import-spec.md](06-import-spec.md).
+1. User pastes plan text, receives shared text/file handoff, or opens a `.arcguide`.
+2. Text import runs `ImportedPlanParser` (T0) and optional smart tiers to produce an `ArcPlanDocument`; structured `.arcguide` files decode through `ArcDocumentCodec.decodePlanOrGuide` and skip parsing.
+3. User edits the draft surface.
+4. Commit maps `ArcPlanDocument` directly into `Trip -> ShootDay -> Stop -> Stage -> CaptureItem` through `TripDocumentMapper` and saves.
+5. Original source text is stored as a `TripArtifact(kind: shootList)`; generated review output later writes `TripArtifact(kind: script)`.
 
 The full T0–T3 tier ladder (heuristics → on-device Foundation Models → optional cloud → Private Cloud Compute) is specified in [docs/06-import-spec.md](06-import-spec.md).
 
 ### 1.6 Field execution and review
 
-- **Field execution** — `Arc/Features/Field/Presentation/FieldView.swift`: renders `plan.fieldStages` (computed grouping at `ShootPlan.swift:104`) one stage at a time with capture/skip/note/photo actions; `addSafetyNetItems()` at `FieldView.swift:533-577` appends the 6 hardcoded Story Safety Net items, skipping titles already unresolved in the current stage (P0 dedup guard at `:548-555`; structural fix specified in [docs/07-field-ux.md](07-field-ux.md)).
-- **Review** — `Arc/Features/Shoots/Presentation/CompletedShootView.swift`: segmented post-shoot review of execution data; export today is a plain-text `ShareLink` only (replaced by review/export v2 in P3 and `.arcguide` export in P4 — [docs/adr/ADR-0004-arcguide-document-interchange.md](adr/ADR-0004-arcguide-document-interchange.md)).
+- **Field execution** — `Arc/Features/Field/Presentation/FieldView.swift`: renders the active `Trip`, trip timeline, map, current stop/stage, stage mantra, and capture/skip/note/photo actions. Safety Net inserts one `Stage(kind: safetyNet)` per stop with `CaptureItem.origin == .safetyNet`.
+- **Review** — `Arc/Features/Shoots/Presentation/CompletedShootView.swift`: segmented post-shoot review of execution data; completion generates a script artifact and review shares markdown plus `.arcguide`.
 
 ---
 
@@ -99,9 +103,9 @@ Phases and gates are defined in [docs/08-roadmap.md](08-roadmap.md); gate criter
 
 | Phase | New modules / targets |
 |---|---|
-| P0 Stabilize | Unit test target (first tests: parsers, `fieldStages` grouping, safety-net dedup). No new app modules. |
-| P1 Import pipeline v2 + document format | `Arc/Core/Documents/` — `ArcPlanDocument` / `ArcGuideDocument` codecs (one JSON schema, `kind` plan \| guide, integer `schemaVersion`, UTType `com.arc.guide`, `.arcguide`; folder must never import SwiftData). `Arc/Services/AI/FoundationModelsPlanService.swift` — T1 on-device `@Generable` service, availability-gated via `SystemLanguageModel`, per-day chunking, prewarm on import screen, guardrail fallback to T0. Share extension target + App Group (receive text/files into the import flow). App Intents: `ImportPlanIntent`. |
-| P2 Schema v2 + timeline and map | `Arc/Features/Trips/` — Domain (Trip, TripArtifact, ShootDay, Stop, Stage, CaptureItem per [docs/05-data-model.md](05-data-model.md)) + Presentation (trip timeline, map from geo anchors). Store reset per [docs/adr/ADR-0003-store-reset-pre-ship.md](adr/ADR-0003-store-reset-pre-ship.md). |
+| P0 Stabilize | Done on main: test target, parser baseline, document safety fixes. |
+| P1 Import pipeline v2 + document format | Done on main: `Arc/Core/Documents/`, T0 document parser, Foundation Models service, App Intent/handoff surfaces. |
+| P2 Schema v2 + timeline and map | Implemented on owner-test branch: `Arc/Features/Trips/` domain, trip timeline, map, direct document mapper, retired model deletion. |
 | P3 Field ergonomics v2 + review/export v2 | Live Activity extension (stage mantra on Lock Screen / Dynamic Island). While-in-use geofence service (scoped per [docs/adr/ADR-0007-while-in-use-location-surfacing.md](adr/ADR-0007-while-in-use-location-surfacing.md); AGENTS.md:30 amendment). Golden-hour nudge logic reusing `SunMoonCalculator`. |
 | P4 Guide export + share preview + email capture | `.arcguide` guide export from executed trips; off-app static preview page + email capture (see [docs/02-business.md](02-business.md) and [docs/adr/ADR-0006-email-capture-and-paid-guides.md](adr/ADR-0006-email-capture-and-paid-guides.md)). |
 | P5 Platform | Architecture only — see section 4. Gated on G3 + G4. |
@@ -113,13 +117,9 @@ Phases and gates are defined in [docs/08-roadmap.md](08-roadmap.md); gate criter
 | Item | Evidence pointer | Retiring phase |
 |---|---|---|
 | Flickr reference images cached to disk but never displayed in any view | `Arc/Services/Enrichment/ReferenceImageCache.swift` (`DiskReferenceImageCache`), wired in `AppContainer.swift:39`; no consuming view | P3 — surface in field/review UI or retire the pipeline |
-| Plans reachable only via their `ShootLocation` (one-plan-per-location shape) | `ShootLocation.swift`; import commit now requires a picked real location (`ImportPlanFlowView.swift:495-499`) | P2 replaces location-as-root with Trip/Stop |
-| Stages computed by grouping items on `(stageOrderIndex, stageTitle)` on hot UI paths | `ShootPlan.swift:104` (`fieldStages`); re-evaluated per render in `FieldView` | P2 — Stage becomes a stored entity |
-| Stage `goal` denormalized per item as the transitional `stageGoal` stopgap (P0 implemented) | `ShootPlan.swift:173`; written in the commit item loop at `ImportPlanFlowView.swift:522-545` (`:535`) | P2 replaces with `Stage.goal` |
-| `ShootPlanItem.role` string redundant with `kind` | `ShootPlan.swift:168` (`role`) vs `:221` (`kind` from `kindRawValue`) | P2 — drop `role`, keep `CaptureItem` kind |
-| Hardcoded safety-net items (P0 dedup guard implemented — unresolved-title skip at `FieldView.swift:548-555`) | `FieldView.swift:533-577` (`addSafetyNetItems()`) | P0 guard done; P3 proper Safety Net mechanics |
-| No test target | Repo has no test targets or CI | P0 |
-| Raw-value enum fallback defaults mask data issues (bad stored strings silently become `.natural`, `.now`, `.shot`, …) | e.g. `ShootPlan.swift:92-98`, `:221-223` | P2 note — schema v2 must fail loudly or migrate explicitly |
+| Off-app guide preview/email capture not built | Local `.arcguide` export/import exists; no web preview or ESP gate | P4 after G2 |
+| Golden-hour nudges not built | `SunMoonCalculator` exists; field UI does not surface nudges | P3 after G1 |
+| While-in-use stop surfacing / Live Activity not built | ADR-0007 defines constraints; no implementation yet | P3 after G1 |
 | Reference-image cache has no TTL or size limit | `DiskReferenceImageCache` in `ReferenceImageCache.swift` | Backlog |
 
 ---

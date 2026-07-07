@@ -5,7 +5,7 @@ import UIKit
 struct ImportPlanFlowView: View {
     let aiService: any AIServicing
     let locationEditorServices: LocationEditorServiceFactory
-    let onCommit: (ShootLocation) -> Void
+    let onCommit: (Trip) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -29,7 +29,7 @@ struct ImportPlanFlowView: View {
         locationEditorServices: LocationEditorServiceFactory,
         initialText: String = "",
         initialDocument: ArcPlanDocument? = nil,
-        onCommit: @escaping (ShootLocation) -> Void
+        onCommit: @escaping (Trip) -> Void
     ) {
         self.aiService = aiService
         self.locationEditorServices = locationEditorServices
@@ -492,64 +492,24 @@ struct ImportPlanFlowView: View {
         errorMessage = nil
         defer { isCommitting = false }
 
-        let location = ShootLocation(
-            name: locationDraft.name,
-            latitude: locationDraft.coordinate.latitude,
-            longitude: locationDraft.coordinate.longitude
-        )
-        let plan = ShootPlan(
-            notes: text,
-            rawResponse: encodedDocumentJSON(commitDocument) ?? text,
-            source: .importedText,
-            importedPlanText: commitDocument.sourceText.isEmpty ? text : commitDocument.sourceText,
-            storySummary: draft.storySummary,
-            currentStageOrderIndex: 0,
-            outputIntent: .fullTravelVlog,
-            captureMedium: .hybrid,
-            targetPlatform: .youtube,
-            stylePreset: .natural,
-            shootWindowMode: .custom,
-            shootWindowSummary: "Imported field guide.",
-            isApprovedForField: true,
-            approvedAt: Date(),
-            location: location
-        )
-
-        location.plan = plan
-        modelContext.insert(location)
-        modelContext.insert(plan)
-
-        var globalOrderIndex = 0
-        for (stageIndex, stage) in draft.stages.enumerated() {
-            let stageTitle = stage.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Stage \(stageIndex + 1)" : stage.title
-            let stageGoal = stage.goal.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            for item in stage.items where !item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                let planItem = ShootPlanItem(
-                    orderIndex: globalOrderIndex,
-                    title: item.title.trimmingCharacters(in: .whitespacesAndNewlines),
-                    role: item.kind.title,
-                    guidance: item.guidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Capture this clearly enough to use in the edit." : item.guidance,
-                    stageTitle: stageTitle,
-                    stageOrderIndex: stageIndex,
-                    stageGoal: stageGoal,
-                    kind: item.kind,
-                    priority: item.priority,
-                    isBeforeLeaving: item.isBeforeLeaving,
-                    plan: plan
-                )
-                modelContext.insert(planItem)
-                plan.items.append(planItem)
-                globalOrderIndex += 1
+        let trip = TripDocumentMapper.trip(from: commitDocument, fallbackTitle: effectiveProjectTitle)
+        if let firstStop = trip.orderedStops.first {
+            if firstStop.latitude == nil || firstStop.longitude == nil {
+                firstStop.latitude = locationDraft.coordinate.latitude
+                firstStop.longitude = locationDraft.coordinate.longitude
+            }
+            if firstStop.placeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                firstStop.placeName = locationDraft.name
             }
         }
+        modelContext.insert(trip)
 
         do {
             try modelContext.save()
-            onCommit(location)
+            onCommit(trip)
             dismiss()
         } catch {
-            modelContext.delete(location)
+            modelContext.delete(trip)
             errorMessage = error.localizedDescription
         }
     }

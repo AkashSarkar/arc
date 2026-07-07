@@ -1,8 +1,8 @@
 import Foundation
 
 protocol ReferenceImageCaching {
-    func cacheReferenceImages(for location: ShootLocation) async -> ReferenceImageCacheResult
-    func cacheStatus(for location: ShootLocation) -> ReferenceImageCacheResult
+    func cacheReferenceImages(for location: Stop) async -> ReferenceImageCacheResult
+    func cacheStatus(for location: Stop) -> ReferenceImageCacheResult
 }
 
 struct ReferenceImageCacheResult {
@@ -22,7 +22,7 @@ struct DiskReferenceImageCache: ReferenceImageCaching {
         self.urlSession = urlSession
     }
 
-    func cacheReferenceImages(for location: ShootLocation) async -> ReferenceImageCacheResult {
+    func cacheReferenceImages(for location: Stop) async -> ReferenceImageCacheResult {
         guard let imageTargets = imageTargets(for: location) else {
             return ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
         }
@@ -67,7 +67,7 @@ struct DiskReferenceImageCache: ReferenceImageCaching {
         return ReferenceImageCacheResult(totalImages: imageTargets.count, cachedImages: cachedImages)
     }
 
-    func cacheStatus(for location: ShootLocation) -> ReferenceImageCacheResult {
+    func cacheStatus(for location: Stop) -> ReferenceImageCacheResult {
         guard let imageTargets = imageTargets(for: location) else {
             return ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
         }
@@ -89,7 +89,7 @@ struct DiskReferenceImageCache: ReferenceImageCaching {
         return ReferenceImageCacheResult(totalImages: imageTargets.count, cachedImages: cachedImages)
     }
 
-    private func imageTargets(for location: ShootLocation) -> [(id: String, url: URL)]? {
+    private func imageTargets(for location: Stop) -> [(id: String, url: URL)]? {
         guard let contextBundle = LocationContextBundle.decode(from: location.enrichmentJSON) else {
             return nil
         }

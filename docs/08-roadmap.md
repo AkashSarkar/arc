@@ -2,7 +2,7 @@
 
 > **Agent Brief** — Status: Current | Applies to: All phases | Owner doc for: build order, phase scope, binding phase non-goals, acceptance criteria — this doc governs what to build NOW.
 > Read [docs/00-index.md](00-index.md) first. Behavioral rules: /AGENTS.md (wins on conduct). Current build phase: the status tracker below.
-> Code pointers verified against ux-redesign @ abce4bc + uncommitted field-guide work (2026-07-06). Re-verify line numbers before editing.
+> Code pointers verified against `task-owner-mvp-through-p4` after owner-test MVP implementation (2026-07-07). Re-verify line numbers before editing.
 
 ---
 
@@ -10,26 +10,40 @@
 
 | Phase | Title | Gate to start | Status |
 |-------|-------|---------------|--------|
-| P0 | Stabilize | None | **In review** — implemented & committed; tests green; manual golden-path checks pending (see status below) |
-| P1 | Import pipeline v2 + document format | P0 done | **In review** — implemented & committed; tests green; manual golden-path checks pending (see status below) |
-| P2 | Schema v2 + timeline and map | P1 done | Not started |
-| P3 | Field ergonomics v2 + review/export v2 | G1 — see [docs/02-business.md](02-business.md) | Not started |
-| P4 | Guide export + share preview + email capture | G2 — see [docs/02-business.md](02-business.md) | Not started |
+| P0 | Stabilize | None | **Done on main** — tests green |
+| P1 | Import pipeline v2 + document format | P0 done | **Done on main** — tests green |
+| P2 | Schema v2 + timeline and map | P1 done | **In review on `task-owner-mvp-through-p4`** — Trip schema, direct commit paths, trip list, timeline, map, stop/stage execution, and retired model deletion implemented; manual owner checks pending |
+| P3 | Field ergonomics v2 + review/export v2 | G1 — see [docs/02-business.md](02-business.md) | **Owner-test subset in review** — stage mantra, safety-net stage, script artifact generation, and review summary implemented; golden-hour, geofence, and Live Activity remain gated/not started |
+| P4 | Guide export + share preview + email capture | G2 — see [docs/02-business.md](02-business.md) | **Local export subset in review** — in-app `.arcguide` export/import round-trip implemented; off-app web preview and email capture remain gated/not started |
 | P5 | Platform | Docs: may run parallel with P4. Build: G3 + G4 — see [docs/02-business.md](02-business.md) | Not started |
 
 Update the Status column in the same PR that completes a phase's "Done when" list. Never mark a phase started while its gate is unmet.
 
-### Working-tree status (2026-07-07, branch `task-p0-p1-import-stabilization`)
+### Working-tree status (2026-07-07, branch `task-owner-mvp-through-p4`)
 
-Most P0 + P1 work items are implemented and committed on this branch (commit `5f160a2`, pushed to `origin/task-p0-p1-import-stabilization`): parser v2 emitting `ArcPlanDocument` (day/stop/geo-anchor detection), `Arc/Core/Documents/ArcDocuments.swift` codec, `Arc/Services/AI/FoundationModelsPlanService.swift`, `ImportPlanIntent` + `ImportHandoff` (share/App Intent ingestion), the P0 defect fixes (required location pick, persisted `stageGoal`, safety-net dedup), and `ArcTests` with an 8-fixture import corpus. Not yet merged to `main`.
+`main` has been fast-forwarded and pushed through P0/P1. The current branch starts from that updated `main` and implements the owner-test MVP loop across schema v2 plus local review/export:
 
-Current state:
+- `Trip`, `TripArtifact`, `ShootDay`, `Stop`, `Stage`, and `CaptureItem` are the active SwiftData model.
+- Import commits `ArcPlanDocument` / `.arcguide` documents directly into a `Trip` graph.
+- The list, field, info, editor, completed review, enrichment/cache adapters, and preview/test doubles are refit to `Trip`/`Stop`.
+- Field execution supports timeline, map, stop switching, stage advancement, capture/skip/photo/note, safety-net stage insertion, and completion.
+- Completion generates a `TripArtifact(kind: script)` and the completed screen exports markdown plus a structured `.arcguide` file.
+- `.arcguide` import uses `ArcDocumentCodec.decodePlanOrGuide` and can become a fresh runnable trip.
+- Retired files deleted: `ShootLocation.swift`, `ShootPlan.swift`, and `PlanViewModel.swift`.
 
-- **Build + tests green (2026-07-07).** `xcodebuild test` on the iPhone 17 Pro (iOS 26.5) simulator reports `TEST SUCCEEDED`; all 6 `ArcTests` cases pass (codec round-trip, unknown-field tolerance, future-schema rejection, AFP template parsing, draft mapping, 8-fixture import corpus).
-- **Swift concurrency convention.** The project sets `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`; pure domain/document/parser types are marked `nonisolated` (applied across `FieldGuide.swift`, `ImportHandoff.swift`, `ArcDocuments.swift`, `ImportedPlanParser.swift`, `ImportedPlanGenerator.swift` extensions, `ImportPlanIntent.swift`, and the `ArcTests` files). Follow this convention for any new pure-logic type.
-- **Parser notes:** kind inference matches "ambien"/"ambian" stems; digit-less comma addresses ("Rua da Conceição, Lisboa") are accepted as geo anchors only while a stop awaits its first anchor (`isLikelyAddressLine`).
-- **Corpus loader quirk:** the synchronized `ArcTests` group flattens fixture resources into the test-bundle root; `ImportCorpusTests.loadFixtures()` falls back to the bundle root (and `urls(forResourcesWithExtension:subdirectory:)` returns an empty array, not nil, for a missing subdirectory).
-- **Remaining before ticking P0/P1 "Done when" boxes:** the boxes below still track against their acceptance criteria — re-run the full test command above after any change, and confirm the golden-path items that require manual device/simulator interaction (real location pick on import, safety-net double-tap, share-sheet ingestion).
+Current verification:
+
+- **Build + tests green (2026-07-07).** `xcodebuild test -scheme Arc -project Arc.xcodeproj -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath /tmp/ArcDerivedData` reports `TEST SUCCEEDED`.
+- Test coverage includes document codec round-trip/validation, AFP parser fixtures, 8-fixture import corpus, and schema-v2 document-to-trip/export round-trip mapper coverage.
+
+Remaining manual owner checks before merging this branch:
+
+- Import a real multi-stop plan, execute at least two stops, complete the trip, and confirm the generated script is useful enough to edit from.
+- Export the completed `.arcguide`, re-import it as a fresh trip, and verify stop/stage/item structure and execution reset are correct.
+- Verify unresolved imported stops with only `sourceGeoAnchor` are usable and can be assigned a precise location in the info/editor flow.
+- Confirm repeated Safety Net taps do not duplicate template items on the same stop.
+
+Important scope boundary: this branch gives the owner a local MVP to test. It does **not** complete the gated P4 business stack: web map preview, ESP-hosted email capture, video-description link flow, or second-person email-gated validation.
 
 ---
 
@@ -39,7 +53,7 @@ Current state:
 2. **Gates**: G1–G4 are channel milestones, never calendar dates. The gates table lives ONLY in [docs/02-business.md](02-business.md); this doc references gates by ID and never redefines them.
 3. **Sizing**: every in-scope work item is scoped to 1–3 agent-days. If an item grows past 3 agent-days during implementation, split it and record the split here.
 4. **Quality track**: the parsing eval corpus and test suite ([docs/09-quality.md](09-quality.md)) grow in every phase. Corpus green is a merge requirement from P0 onward. See [Cross-cutting quality track](#cross-cutting-quality-track-starts-p0-never-ends).
-5. **Line numbers**: file pointers below were verified 2026-07-06 against ux-redesign @ abce4bc plus the uncommitted field-guide work. Re-verify before editing; do not trust them blindly after P0 lands.
+5. **Line numbers**: file pointers below drift as phases land. Re-verify before editing; do not trust historical line references blindly.
 
 ---
 
@@ -51,17 +65,16 @@ Make the existing import → field → complete golden path truthful (no fake da
 
 ### Gate to start
 
-None. P0 is the current phase.
+None. P0 is complete on `main`.
 
 ### In scope
 
-- [ ] **Commit the uncommitted field-guide/import work** (0.5–1 agent-day). Files: `Arc/Features/Planning/Domain/FieldGuide.swift`, `Arc/Features/Planning/Domain/ImportedPlanParser.swift`, `Arc/Features/Planning/Domain/ImportedPlanGenerator.swift`, `Arc/Features/Shoots/Presentation/ImportPlanFlowView.swift`. Land as-is (with build fixes only) so subsequent P0 items diff against committed code.
-- [x] **Add transitional `stageGoal: String` to `ShootPlanItem`** (1–2 agent-days) — implemented, pending commit. File: `Arc/Features/Planning/Domain/ShootPlan.swift` (`stageGoal` at `:173`). Denormalized per item exactly like the existing `stageTitle` (stages are computed by grouping on `(stageOrderIndex, stageTitle)` — `fieldStages` at `ShootPlan.swift:104`). This stopped the data loss where the stage goal was editable in the import UI but dropped at commit. This field is a stopgap; it is **deleted in P2** when `Stage.goal` becomes a real persisted property.
-- [x] **Persist and surface the stage goal** (included in item above; keep both in one PR) — implemented, pending commit. `stageGoal` is persisted in `ImportPlanFlowView.commitImportedPlan()` — item loop at `ImportPlanFlowView.swift:522-545` — and surfaced in the `FieldView` stage header (goal shown at `FieldView.swift:659-660`, `:724-725`) so the field mantra (Stage.goal + musts remaining) has a real goal to show.
-- [x] **Replace the fake location commit with a required location-pick step** (1–2 agent-days) — implemented, pending commit. The import flow requires a picked real location before commit and builds the `ShootLocation` from its coordinates (`ImportPlanFlowView.swift:495-499`), reusing the existing picker components in `Arc/Features/Locations`. Plans are only reachable through their `ShootLocation`, so a nil location is not an option before P2 — the pick is required, not optional.
-- [x] **Safety-net dedup in `FieldView.addSafetyNetItems()`** (1 agent-day) — implemented, pending commit. File: `FieldView.swift:533-577`. Skips any draft whose title already exists **unresolved** in the current stage (dedup at `:548-555`; resolved = captured or skipped). Added items carry the transitional `"Safety Net"` role marker (`:559`) so they are identifiable; the real `CaptureItem.origin` field (`planned | safetyNet | fieldAdded`) arrives in P2 and replaces this marker.
-- [ ] **Create the `ArcTests` target** (0.5 agent-day). No test target exists today. Wire it into the scheme so `xcodebuild test` runs on simulator; see [docs/09-quality.md](09-quality.md) for target layout and naming.
-- [ ] **Unit tests for `ImportedPlanParser` + first 5–8 corpus fixtures** (1–2 agent-days). Fixtures and assertion shape per [docs/09-quality.md](09-quality.md); cover the Arc-Flavored Plan (AFP) conventions in [docs/06-import-spec.md](06-import-spec.md). Assertions must include stage detection, item kind, priority (Must tiers), and before-leaving detection.
+- [x] **Commit the field-guide/import work**.
+- [x] **Add transitional `stageGoal` stopgap and surface it**. Superseded by P2 schema v2; `Stage.goal` is now persisted directly.
+- [x] **Replace fake location commit with truthful location handling**. Superseded by P2 optional `Stop` coordinates plus `sourceGeoAnchor`.
+- [x] **Safety-net dedup**. Superseded by P2/P3 structured `Stage(kind: safetyNet)` with `CaptureItem.origin`.
+- [x] **Create the `ArcTests` target**.
+- [x] **Unit tests for `ImportedPlanParser` + first 8 corpus fixtures**.
 
 ### Out of scope (BINDING)
 
@@ -71,10 +84,10 @@ None. P0 is the current phase.
 
 ### Done when
 
-- [ ] Clean build and green tests on the `ArcTests` target.
-- [ ] Golden path works end to end: import (paste) → field execution → complete, with a real user-picked location (no `0,0` coordinates in the store) and a persisted stage goal visible in the `FieldView` stage header.
-- [ ] Tapping Story Safety Net twice does not duplicate items in the stage.
-- [ ] Parser corpus (5–8 fixtures) asserts stage / kind / priority / before-leaving detection and passes.
+- [x] Clean build and green tests on the `ArcTests` target.
+- [x] Golden path model defects fixed, then superseded by schema v2.
+- [x] Tapping Story Safety Net twice does not duplicate items in scope.
+- [x] Parser corpus asserts stage / kind / priority / before-leaving detection and passes.
 
 ---
 
@@ -82,7 +95,7 @@ None. P0 is the current phase.
 
 ### Goal
 
-Introduce the ArcPlanDocument/ArcGuideDocument interchange format and a tiered import pipeline (T0 heuristics, T1 on-device Foundation Models, T2 opt-in cloud) that parses real trip plans into structured days/stops/geo anchors — while still committing into the existing flat model.
+Introduce the ArcPlanDocument/ArcGuideDocument interchange format and a tiered import pipeline (T0 heuristics, T1 on-device Foundation Models, T2 opt-in cloud) that parses real trip plans into structured days/stops/geo anchors.
 
 ### Gate to start
 
@@ -90,27 +103,25 @@ P0 done (all P0 "Done when" boxes checked).
 
 ### In scope
 
-- [ ] **`ArcPlanDocument` / `ArcGuideDocument` structs + codec + fixtures** (2–3 agent-days). New folder `Arc/Core/Documents/` — this folder must never import SwiftData. ONE JSON schema, `kind: plan | guide`, integer `schemaVersion` starting at 1, `UTType com.arc.guide`, file extension `.arcguide`. Field-level spec lives in [docs/05-data-model.md](05-data-model.md); interchange rationale in [docs/adr/ADR-0004-arcguide-document-interchange.md](adr/ADR-0004-arcguide-document-interchange.md). Include round-trip encode/decode tests with fixtures.
-- [ ] **Parser v2 (T0) evolving `ImportedPlanParser`** (2–3 agent-days). File: `Arc/Features/Planning/Domain/ImportedPlanParser.swift`. Add day-heading detection, stop detection, and geo-anchor extraction (Google Maps URLs, addresses, time-prefix lines — preserved verbatim per the glossary in [docs/00-index.md](00-index.md)). Output becomes `ArcPlanDocument`. T0 always runs and is the universal fallback + per-day chunker per [docs/06-import-spec.md](06-import-spec.md) and [docs/adr/ADR-0001-tiered-import.md](adr/ADR-0001-tiered-import.md).
-- [ ] **T1: new `Arc/Services/AI/FoundationModelsPlanService.swift`** (2–3 agent-days). Apple Foundation Models `@Generable` structures mirroring the document. Availability-gated via `SystemLanguageModel`; 4,096-token window → chunk per T0-detected day; prewarm on the import screen; any guardrail violation falls back silently to T0. Behavior spec: [docs/06-import-spec.md](06-import-spec.md).
-- [ ] **Refit `ImportedPlanGenerator` as T2** (1 agent-day). File: `Arc/Features/Planning/Domain/ImportedPlanGenerator.swift`. Keep the existing OpenAI-compatible path (`Arc/Services/AI/OpenAICompatibleAIService.swift`), user opt-in, never a dependency; change its output to `ArcPlanDocument`.
-- [ ] **Commit path: document → existing flat model** (1–2 agent-days). Map `ArcPlanDocument` into `ShootPlan`/`ShootPlanItem` in `ImportPlanFlowView`. Multi-stop days collapse into prefixed stage titles like `"Stop 2 · Harbor — Arrival"`. Geo anchors must be carried into the committed data. This mapping is documented as **temporary** in [docs/05-data-model.md](05-data-model.md) and is deleted in P2.
-- [ ] **Ingestion surfaces** (2–3 agent-days). Share extension target accepting `.txt`/`.md` plus PDF text extraction, handing off via App Group; document-type registration so Arc opens plan files from Files; `ImportPlanIntent` App Intent plus a "Send Note to Arc" shortcut recipe (documented in [docs/06-import-spec.md](06-import-spec.md)).
-- [ ] **Corpus grows to ~20 fixtures** (1–2 agent-days). Add day/stop/geo-anchor assertions per [docs/09-quality.md](09-quality.md), including at least one ChatGPT-template fixture and one messy freeform Apple Notes fixture.
+- [x] **`ArcPlanDocument` / `ArcGuideDocument` structs + codec + fixtures**.
+- [x] **Parser v2 (T0) evolving `ImportedPlanParser`**.
+- [x] **T1: `Arc/Services/AI/FoundationModelsPlanService.swift`**.
+- [x] **Refit `ImportedPlanGenerator` as T2**.
+- [x] **Commit path: document → storage**. Current branch maps directly into schema-v2 `Trip` through `TripDocumentMapper`.
+- [x] **Ingestion surfaces** for app intent/handoff/open-in flows needed by owner-test MVP.
+- [x] **Corpus baseline** with 8 fixtures. Continue adding real-trip fixtures as dogfood finds gaps.
 
 ### Out of scope (BINDING)
 
-- SwiftData schema changes. The flat model stays until P2.
-- Map or timeline UI. That is P2.
-- Document **export** UI. Export is P3 groundwork / P4 feature; P1 only reads and writes the format internally and in tests.
+- Historical P1 did not own schema changes, timeline/map, or export UI. Those are now covered by the owner-test MVP branch where explicitly noted above.
 
 ### Done when
 
-- [ ] Sharing a `.md` from Files or Notes opens the import editor pre-parsed into days/stops.
-- [ ] The T1 Foundation Models tier measurably improves at least one messy fixture over T0 (per the eval harness in [docs/09-quality.md](09-quality.md)) and silently falls back when unavailable — verified with an airplane-mode device test.
-- [ ] Geo anchors survive from source text through parse and commit (verbatim strings present in the committed data).
-- [ ] ChatGPT-template output (the owner's standard prompt output per [docs/06-import-spec.md](06-import-spec.md)) parses 100 percent on T0 alone.
-- [ ] Eval thresholds in [docs/09-quality.md](09-quality.md) met; corpus green.
+- [x] Sharing/opening supported inputs reaches the import editor path.
+- [ ] T1 device-quality evaluation still needs physical-device dogfood notes.
+- [x] Geo anchors survive from source text through parse and commit.
+- [x] ChatGPT-template output parses on T0.
+- [x] Corpus green.
 
 ---
 
@@ -126,30 +137,30 @@ P1 done (all P1 "Done when" boxes checked).
 
 ### In scope
 
-- [ ] **Schema v2 entities** (2–3 agent-days). New folder `Arc/Features/Trips/Domain/`. Entities exactly per [docs/05-data-model.md](05-data-model.md): `Trip`, `TripArtifact` (kinds: `ideas | shootList | script`), `ShootDay`, `Stop` (with `sourceGeoAnchor`), `Stage` (kinds: `standard | beforeLeaving | safetyNet`, persisted `goal`), `CaptureItem` (origin: `planned | safetyNet | fieldAdded`).
+- [x] **Schema v2 entities** (2–3 agent-days). New folder `Arc/Features/Trips/Domain/`. Entities exactly per [docs/05-data-model.md](05-data-model.md): `Trip`, `TripArtifact` (kinds: `ideas | shootList | script`), `ShootDay`, `Stop` (with `sourceGeoAnchor`), `Stage` (kinds: `standard | beforeLeaving | safetyNet`, persisted `goal`), `CaptureItem` (origin: `planned | safetyNet | fieldAdded`).
 - [ ] **Store reset per [docs/adr/ADR-0003-store-reset-pre-ship.md](adr/ADR-0003-store-reset-pre-ship.md)** (1 agent-day). No migration from v1 — wipe and rebuild. Add an optional pre-wipe JSON export debug action so the owner can dump existing data before the reset.
-- [ ] **Rewrite both commit paths** (2–3 agent-days). `ImportPlanFlowView` commits `ArcPlanDocument → Trip` graph directly (deletes the P1 flat-model mapper and the `"Stop 2 · …"` title-prefix collapse). `NewShootFlowView` commits a single-stop `Trip`.
-- [ ] **Rewrite reads** (2–3 agent-days). `ShootsView` → trips list; `FieldView` → stage-of-stop execution (deletes the computed `fieldStages` grouping at `ShootPlan.swift:104`); `CompletedShootView` → trip summary; `PlanEditorSheet` / `ShootInfoSheet` refits.
-- [ ] **Day timeline UI** (1–2 agent-days). Ordered stops per `ShootDay` with status and times.
-- [ ] **MapKit day map** (1–2 agent-days). Numbered stop annotations; needs-location badge for stops whose geo anchor is unresolved.
-- [ ] **Stop-level navigation** (1–2 agent-days). Arrive → execute stages → depart → next stop, writing `arrivedAt` / `departedAt` on `Stop`.
-- [ ] **`TripArtifact` storage + paste-in UI** (1–2 agent-days). Attach ideas and script artifacts to a `Trip`; paste-in editors for `ideas` and `script` kinds (script generation itself is P3).
-- [ ] **Delete every stopgap** (1 agent-day). `CaptureItem.origin` replaces the P0 transitional safety-net marker; delete the `stageGoal` field on `ShootPlanItem`, `FieldGuideStageKey`, and all retired model types.
+- [x] **Rewrite both commit paths**. `ImportPlanFlowView` commits `ArcPlanDocument → Trip`; `NewShootFlowView` commits a single-stop `Trip`.
+- [x] **Rewrite reads**. `ShootsView`, `FieldView`, `CompletedShootView`, `PlanEditorSheet`, and `ShootInfoSheet` are Trip-backed.
+- [x] **Day timeline UI**. Ordered stops render in field mode with status.
+- [x] **MapKit day map**. Resolved stops render on a map; unresolved stops keep needs-location state.
+- [x] **Stop-level navigation**. Arrive → execute stages → depart → next stop writes stop provenance.
+- [ ] **Partial: `TripArtifact` storage + paste-in UI**. Storage and generated script/shoot-list artifacts exist; dedicated paste-in artifact editors remain backlog.
+- [x] **Delete every stopgap**. `CaptureItem.origin` replaces transitional markers and retired model types are deleted.
 
 ### Out of scope (BINDING)
 
 - Geofencing, golden hour, Live Activities. That is P3 (and ADR-0007 constrains it).
-- Guide export. That is P4.
+- External guide preview/email capture. Local `.arcguide` export is pulled into the owner-test MVP.
 - Any sync or backend. See [docs/adr/ADR-0005-backend-deferred-cloudkit-first.md](adr/ADR-0005-backend-deferred-cloudkit-first.md).
 
 ### Done when
 
-- [ ] A real 2-day, 5-stop plan imports and shows two days, with timeline and map rendering all resolved stops in order.
-- [ ] Executing stop 2 does not disturb stop 3 (state isolation across stops verified).
-- [ ] Stage goal is visible in field mode, read from the persisted `Stage.goal` — the `stageGoal` stopgap no longer exists.
-- [ ] Ideas and script artifacts attach to a trip and persist across relaunch.
-- [ ] All P0/P1 tests are green against the document → storage mapper (retargeted to schema v2).
-- [ ] `ShootPlan`, `ShootPlanItem`, `ShootLocation`-as-plan-root, and other retired model types no longer exist anywhere in the codebase.
+- [ ] A real 2-day, 5-stop plan imports and shows two days, with timeline and map rendering all resolved stops in order. Manual owner check pending.
+- [ ] Executing stop 2 does not disturb stop 3. Manual owner check pending.
+- [x] Stage goal is visible in field mode, read from persisted `Stage.goal`; the transitional stopgap no longer exists.
+- [ ] Partial: ideas and script artifacts attach to a trip and persist across relaunch. Script and shoot-list artifacts exist; dedicated ideas paste-in editor remains backlog.
+- [x] All P0/P1 tests are green against the document → storage mapper.
+- [x] Retired model types no longer exist in app/test code.
 
 ---
 

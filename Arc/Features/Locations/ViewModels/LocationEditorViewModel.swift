@@ -98,13 +98,17 @@ final class LocationEditorViewModel {
     private var reverseGeocodeTask: Task<Void, Never>?
 
     init(
-        location: ShootLocation? = nil,
+        location: Stop? = nil,
         currentLocationService: any CurrentLocationServicing,
         searchService: any LocationSearchServicing,
         reverseGeocodingService: any ReverseGeocodingServicing
     ) {
-        let initialCoordinate = location.map {
-            LocationCoordinate(latitude: $0.latitude, longitude: $0.longitude)
+        let initialCoordinate = location.flatMap { stop -> LocationCoordinate? in
+            guard let latitude = stop.latitude, let longitude = stop.longitude else {
+                return nil
+            }
+
+            return LocationCoordinate(latitude: latitude, longitude: longitude)
         }
 
         self.isEditing = location != nil

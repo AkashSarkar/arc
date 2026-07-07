@@ -1,8 +1,8 @@
 # 06 — Import Spec
 
-> **Agent Brief** — Status: Current | Applies to: P1 (core), P2-P3 (extensions), T3 note is P5+ | Owner doc for: import inputs, Arc-Flavored Plan (AFP) conventions, ChatGPT prompt template, parsing pipeline T0-T3
+> **Agent Brief** — Status: Current | Applies to: owner-test MVP import and `.arcguide` round-trip; T3 note is P5+ | Owner doc for: import inputs, Arc-Flavored Plan (AFP) conventions, ChatGPT prompt template, parsing pipeline T0-T3
 > Read [docs/00-index.md](00-index.md) first. Behavioral rules: /AGENTS.md (wins on conduct). Current build phase: see [docs/08-roadmap.md](08-roadmap.md).
-> Code pointers verified against ux-redesign @ abce4bc + uncommitted field-guide/docs-alignment work (2026-07-06). Re-verify line numbers before editing.
+> Code pointers verified against `task-owner-mvp-through-p4` after Trip mapper/export implementation (2026-07-07). Re-verify line numbers before editing.
 
 This doc is normative for everything between "owner has a trip plan somewhere" and "Arc holds a committed plan." Output schema (`ArcPlanDocument`) is owned by [docs/05-data-model.md](05-data-model.md) and [adr/ADR-0004-arcguide-document-interchange.md](adr/ADR-0004-arcguide-document-interchange.md). Tier decision rationale: [adr/ADR-0001-tiered-import.md](adr/ADR-0001-tiered-import.md).
 
@@ -17,6 +17,8 @@ This doc is normative for everything between "owner has a trip plan somewhere" a
 | 3 | Open in Arc | Declare document types for `public.plain-text`, markdown (`net.daringfireball.markdown`), `com.adobe.pdf` | P1 | Enables Files, Mail attachments, and Apple Notes iOS 26 Markdown export ("Export as Markdown" -> share -> Arc). Same handoff path as row 2: raw text into the main-app import flow. |
 | 4 | App Intent | `ImportPlanIntent` with an `AttributedString` parameter | P1 | Powers the documented **"Send Note to Arc"** Shortcuts recipe below. Plain-text the attributed string, then feed the normal pipeline. |
 | 5 | `.arcguide` file | `UTType com.arc.guide` document open | P1+ | Already-structured `ArcPlanDocument` JSON — skips parsing entirely. See [adr/ADR-0004-arcguide-document-interchange.md](adr/ADR-0004-arcguide-document-interchange.md). |
+
+Owner-test MVP status (2026-07-07): the main app can decode both `kind: plan` and `kind: guide` documents through `ArcDocumentCodec.decodePlanOrGuide`, hand them to the import flow, and commit them directly into the schema-v2 `Trip` graph through `TripDocumentMapper`. The off-app web preview and email capture path are still gated P4 work.
 
 **Apple Notes, plainly:** there is NO public Apple Notes API and none is coming (Apple TN3132 says to use App Intents/Shortcuts instead). Do not plan, estimate, or stub a Notes importer. The Shortcuts bridge is the only real Notes integration:
 
@@ -155,7 +157,7 @@ Here is my trip plan / idea dump — convert it:
 
 ## 4. Parsing pipeline (normative)
 
-Every tier implements the same contract: **input text -> `ArcPlanDocument`** (`kind: plan`, see [docs/05-data-model.md](05-data-model.md)). Tiers differ only in intelligence, never in output shape.
+Every tier implements the same contract: **input text -> `ArcPlanDocument`** (`kind: plan`, see [docs/05-data-model.md](05-data-model.md)). Tiers differ only in intelligence, never in output shape. Structured `.arcguide` import starts from an already-decoded `ArcPlanDocument` and skips tier parsing.
 
 | Tier | Engine | Availability | Role |
 |------|--------|--------------|------|
@@ -201,9 +203,9 @@ Pipeline output feeds the draft/edit/commit flow (`ImportPlanFlowView` today). C
 
 1. **Never lose source lines.** The full pasted/shared text is stored on the `ArcPlanDocument`; every source line is accounted for per contract rule 2 in section 4. A user must always be able to see what the parser was given.
 2. **Every item is traceable or marked synthetic.** `sourceLine` or synthetic marker — enforced at document validation, not by convention.
-3. **Geo anchors are preserved verbatim** into `Stop.sourceGeoAnchor`. No geocoding, no URL unshortening, no coordinate writes during parse. Never fabricate coordinates — the pre-P0 commit path did exactly this (fabricated `0,0`); fixed by the P0 required location-pick step — `ShootLocation` is now built from the picked draft at `ImportPlanFlowView.swift:495-499`. P1 preserves geo anchors through the document pipeline; P2 removes the need for this stopgap by making `Stop.latitude` / `Stop.longitude` optional.
+3. **Geo anchors are preserved verbatim** into `Stop.sourceGeoAnchor`. No geocoding, no URL unshortening, no coordinate writes during parse. Never fabricate coordinates. Schema v2 makes `Stop.latitude` / `Stop.longitude` optional, so unresolved imported stops stay honest until the owner sets a precise location.
 4. **Import works fully offline via T0.** No spinner that depends on network or model download may block producing a draft.
-5. **Committing a draft is the only write to storage.** Parse, tier fallback, and draft editing are pure/in-memory. P0 fixes the current commit defects as stopgaps: no placeholder coordinates, and no silent stage-goal loss. P1 keeps the same invariant while mapping `ArcPlanDocument` into the flat model; P2 resolves both structurally in schema v2 ([docs/05-data-model.md](05-data-model.md)).
+5. **Committing a draft is the only write to storage.** Parse, tier fallback, and draft editing are pure/in-memory. The current commit path maps `ArcPlanDocument` into `Trip -> ShootDay -> Stop -> Stage -> CaptureItem` and stores the original source as a `TripArtifact`.
 
 ---
 

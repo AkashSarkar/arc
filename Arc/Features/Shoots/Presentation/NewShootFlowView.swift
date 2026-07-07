@@ -5,7 +5,7 @@ struct NewShootFlowView: View {
     let aiService: any AIServicing
     let locationEnricher: any LocationEnriching
     let referenceImageCache: any ReferenceImageCaching
-    let onCommit: (ShootLocation) -> Void
+    let onCommit: (Trip) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -43,7 +43,7 @@ struct NewShootFlowView: View {
         locationEnricher: any LocationEnriching,
         referenceImageCache: any ReferenceImageCaching,
         locationEditorServices: LocationEditorServiceFactory,
-        onCommit: @escaping (ShootLocation) -> Void
+        onCommit: @escaping (Trip) -> Void
     ) {
         self.aiService = aiService
         self.locationEnricher = locationEnricher
@@ -445,26 +445,27 @@ struct NewShootFlowView: View {
             generationStage = .idle
         }
 
-        let transientLocation = ShootLocation(
-            name: locationDraft.name,
+        let transientStop = Stop(
+            orderIndex: 0,
+            title: locationDraft.name,
             latitude: locationDraft.coordinate.latitude,
             longitude: locationDraft.coordinate.longitude
         )
 
         do {
             let contextBundle = await locationEnricher.enrich(
-                location: transientLocation,
+                location: transientStop,
                 shootWindow: DateInterval(start: input.shootWindowStart, end: input.shootWindowEnd)
             )
             if let formattedContext = try? contextBundle.formattedJSONString() {
-                transientLocation.enrichmentJSON = formattedContext
-                transientLocation.lastEnrichedAt = contextBundle.generatedAt
+                transientStop.enrichmentJSON = formattedContext
+                transientStop.lastEnrichedAt = contextBundle.generatedAt
                 generatedEnrichmentJSON = formattedContext
                 generatedLastEnrichedAt = contextBundle.generatedAt
             }
 
             generationStage = .buildingChecklist
-            let result = try await generator.generate(for: transientLocation, input: input)
+            let result = try await generator.generate(for: transientStop, input: input)
             rawResponse = result.rawResponse
             draftItems = result.drafts.map(ShootDraftItem.init)
             step = .review
@@ -480,7 +481,7 @@ struct NewShootFlowView: View {
             return
         }
 
-        guard generationInput() != nil else {
+        guard let input = generationInput() else {
             return
         }
 
@@ -488,54 +489,78 @@ struct NewShootFlowView: View {
         errorMessage = nil
         defer { isCommitting = false }
 
-        let location = ShootLocation(
-            name: locationDraft.name,
-            latitude: locationDraft.coordinate.latitude,
-            longitude: locationDraft.coordinate.longitude,
-            enrichmentJSON: generatedEnrichmentJSON,
-            lastEnrichedAt: generatedLastEnrichedAt
-        )
-        let plan = ShootPlan(
-            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-            rawResponse: rawResponse,
+        let trip = Trip(
+            title: locationDraft.name,
+            summary: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+            status: .active,
             outputIntent: outputIntent,
             captureMedium: captureMedium,
             targetPlatform: targetPlatform,
             stylePreset: stylePreset,
-            shootWindowMode: shootWindowMode,
-            shootWindowSummary: shootWindowSummary,
-            shootDate: shootDate,
-            shootStartTime: shootStartTime,
-            shootEndTime: shootEndTime,
-            isApprovedForField: true,
-            approvedAt: Date(),
-            completedAt: nil,
-            location: location
+            startDate: input.shootWindowStart,
+            endDate: input.shootWindowEnd
+        )
+        let day = ShootDay(
+            orderIndex: 0,
+            date: input.shootWindowStart,
+            title: "Day 1",
+            notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+            windowMode: shootWindowMode,
+            startTime: input.shootWindowStart,
+            endTime: input.shootWindowEnd,
+            trip: trip
+        )
+        let stop = Stop(
+            orderIndex: 0,
+            title: locationDraft.name,
+            latitude: locationDraft.coordinate.latitude,
+            longitude: locationDraft.coordinate.longitude,
+            enrichmentJSON: generatedEnrichmentJSON,
+            lastEnrichedAt: generatedLastEnrichedAt,
+            status: .active,
+            day: day
+        )
+        let stage = Stage(
+            orderIndex: 0,
+            title: "Shot List",
+            goal: "Capture the essentials at \(locationDraft.name).",
+            stop: stop
         )
 
-        location.plan = plan
-        modelContext.insert(location)
-        modelContext.insert(plan)
+        trip.days.append(day)
+        trip.artifacts.append(
+            TripArtifact(
+                kind: .shootList,
+                title: "Generated Shot List",
+                body: rawResponse,
+                source: .generated,
+                orderIndex: 0,
+                trip: trip
+            )
+        )
+        day.stops.append(stop)
+        stop.stages.append(stage)
+        modelContext.insert(trip)
 
         for (index, draft) in draftItems.enumerated() {
-            let item = ShootPlanItem(
+            let item = CaptureItem(
                 orderIndex: index,
                 title: draft.title,
-                role: draft.role,
                 guidance: draft.guidance,
-                plan: plan
+                kind: FieldGuideItemKind(roleTitle: draft.role),
+                priority: .must,
+                stage: stage
             )
-            modelContext.insert(item)
-            plan.items.append(item)
+            stage.items.append(item)
         }
 
         do {
             try modelContext.save()
-            _ = await referenceImageCache.cacheReferenceImages(for: location)
-            onCommit(location)
+            _ = await referenceImageCache.cacheReferenceImages(for: stop)
+            onCommit(trip)
             dismiss()
         } catch {
-            modelContext.delete(location)
+            modelContext.delete(trip)
             errorMessage = error.localizedDescription
         }
     }

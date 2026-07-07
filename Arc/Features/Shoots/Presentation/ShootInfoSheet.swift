@@ -2,7 +2,7 @@ import MapKit
 import SwiftUI
 
 struct ShootInfoSheet: View {
-    let location: ShootLocation
+    let stop: Stop
     let locationEnricher: any LocationEnriching
     let referenceImageCache: any ReferenceImageCaching
     let locationEditorServices: LocationEditorServiceFactory
@@ -12,16 +12,20 @@ struct ShootInfoSheet: View {
     @State private var isPresentingEditLocation = false
     @State private var selectedSection: ShootInfoSection = .location
 
-    private var plan: ShootPlan? {
-        location.plan
+    private var coordinate: CLLocationCoordinate2D? {
+        guard let latitude = stop.latitude, let longitude = stop.longitude else {
+            return nil
+        }
+
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
-    private var coordinate: CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)
-    }
+    private var mapRegion: MKCoordinateRegion? {
+        guard let coordinate else {
+            return nil
+        }
 
-    private var mapRegion: MKCoordinateRegion {
-        MKCoordinateRegion(
+        return MKCoordinateRegion(
             center: coordinate,
             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
         )
@@ -33,8 +37,8 @@ struct ShootInfoSheet: View {
                 Section {
                     ArcCompactHeroHeader(
                         systemImage: "info.circle.fill",
-                        title: "Plan Info",
-                        summary: location.name
+                        title: "Stop Info",
+                        summary: stop.name
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .listRowBackground(Color.clear)
@@ -68,14 +72,15 @@ struct ShootInfoSheet: View {
                 }
             }
             .sheet(isPresented: $isPresentingEditLocation) {
-                LocationEditorView(location: location, services: locationEditorServices) { draft in
-                    location.name = draft.name
-                    location.latitude = draft.coordinate.latitude
-                    location.longitude = draft.coordinate.longitude
+                LocationEditorView(location: stop, services: locationEditorServices) { draft in
+                    stop.name = draft.name
+                    stop.placeName = draft.name
+                    stop.latitude = draft.coordinate.latitude
+                    stop.longitude = draft.coordinate.longitude
                 }
             }
-            .task(id: location.enrichmentJSON) {
-                cacheStatus = referenceImageCache.cacheStatus(for: location)
+            .task(id: stop.enrichmentJSON) {
+                cacheStatus = referenceImageCache.cacheStatus(for: stop)
             }
         }
     }
@@ -98,21 +103,23 @@ struct ShootInfoSheet: View {
                 ArcFeatureTitle(
                     systemImage: "map",
                     title: "Location",
-                    subtitle: "\(location.latitude.formatted(.number.precision(.fractionLength(5)))), \(location.longitude.formatted(.number.precision(.fractionLength(5))))",
+                    subtitle: stop.coordinateSummary,
                     accent: ArcPalette.tint
                 )
 
-                Map(initialPosition: .region(mapRegion)) {
-                    Marker(location.name, coordinate: coordinate)
+                if let mapRegion, let coordinate {
+                    Map(initialPosition: .region(mapRegion)) {
+                        Marker(stop.name, coordinate: coordinate)
+                    }
+                    .frame(height: 180)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .allowsHitTesting(false)
                 }
-                .frame(height: 180)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .allowsHitTesting(false)
 
                 Button {
                     isPresentingEditLocation = true
                 } label: {
-                    Label("Edit Location", systemImage: "slider.horizontal.3")
+                    Label(stop.hasResolvedCoordinate ? "Edit Location" : "Set Location", systemImage: "slider.horizontal.3")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glass)
@@ -126,7 +133,7 @@ struct ShootInfoSheet: View {
     private var contextSection: some View {
         Section {
             NavigationLink {
-                LocationContextView(location: location, locationEnricher: locationEnricher)
+                LocationContextView(location: stop, locationEnricher: locationEnricher)
             } label: {
                 ArcFeatureCard(accent: ArcPalette.glowSecondary) {
                     ArcFeatureTitle(
@@ -137,6 +144,7 @@ struct ShootInfoSheet: View {
                     )
                 }
             }
+            .disabled(!stop.hasResolvedCoordinate)
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
@@ -153,14 +161,13 @@ struct ShootInfoSheet: View {
                     accent: ArcPalette.glowPrimary
                 )
 
-                if let plan {
+                if let trip = stop.day?.trip {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
-                            ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
-                            ArcStatusPill(plan.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
-                            ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
-                            ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
-                            ArcStatusPill(plan.shootWindowSummary, systemImage: "calendar.badge.clock", tint: ArcPalette.glowPrimary)
+                            ArcStatusPill(trip.outputIntent.title, systemImage: "square.stack.3d.up")
+                            ArcStatusPill(trip.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
+                            ArcStatusPill(trip.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
+                            ArcStatusPill(trip.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
                         }
                     }
                 }
@@ -172,8 +179,12 @@ struct ShootInfoSheet: View {
     }
 
     private var contextSubtitle: String {
-        if let lastEnrichedAt = location.lastEnrichedAt,
-           !location.enrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        guard stop.hasResolvedCoordinate else {
+            return "Set a location before fetching landmarks, weather, and sun timing."
+        }
+
+        if let lastEnrichedAt = stop.lastEnrichedAt,
+           !stop.enrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "Cached \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened)). Tap to refresh or inspect."
         }
 
@@ -182,7 +193,7 @@ struct ShootInfoSheet: View {
 
     private var referenceSubtitle: String {
         guard cacheStatus.totalImages > 0 else {
-            return "No offline reference images cached for this plan."
+            return "No offline reference images cached for this stop."
         }
 
         return "\(cacheStatus.cachedImages) of \(cacheStatus.totalImages) cached for offline use."

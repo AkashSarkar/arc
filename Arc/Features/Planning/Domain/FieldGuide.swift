@@ -54,6 +54,21 @@ nonisolated enum FieldGuideItemKind: String, CaseIterable, Identifiable {
             return "note.text"
         }
     }
+
+    init(roleTitle: String) {
+        let normalized = roleTitle.lowercased()
+        if normalized.contains("voice") || normalized.contains("line") || normalized.contains("reaction") {
+            self = .voice
+        } else if normalized.contains("sound") || normalized.contains("audio") {
+            self = .sound
+        } else if normalized.contains("transition") || normalized.contains("arrival") || normalized.contains("departure") {
+            self = .transition
+        } else if normalized.contains("note") {
+            self = .note
+        } else {
+            self = .shot
+        }
+    }
 }
 
 nonisolated enum FieldGuidePriority: String, CaseIterable, Identifiable {
@@ -134,43 +149,5 @@ nonisolated struct FieldGuideItemDraft: Identifiable, Equatable {
         self.isBeforeLeaving = isBeforeLeaving
         self.sourceLine = sourceLine
         self.isSynthetic = isSynthetic
-    }
-}
-
-nonisolated struct FieldGuideStageKey: Hashable {
-    let orderIndex: Int
-    let title: String
-}
-
-nonisolated struct FieldGuideStage: Identifiable {
-    let orderIndex: Int
-    let title: String
-    let goal: String
-    let items: [ShootPlanItem]
-
-    var id: Int { orderIndex }
-
-    var capturedCount: Int {
-        items.filter(\.isCaptured).count
-    }
-
-    var skippedCount: Int {
-        items.filter(\.isSkipped).count
-    }
-
-    var resolvedCount: Int {
-        items.filter(\.isResolved).count
-    }
-
-    var missingItems: [ShootPlanItem] {
-        items.filter { !$0.isResolved }
-    }
-
-    var progress: Double {
-        guard !items.isEmpty else {
-            return 0
-        }
-
-        return Double(resolvedCount) / Double(items.count)
     }
 }

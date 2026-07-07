@@ -19,7 +19,7 @@ struct ShotListGenerationResult {
 
 @MainActor
 protocol ShotListGenerating {
-    func generate(for location: ShootLocation, input: ShotListGenerationInput) async throws -> ShotListGenerationResult
+    func generate(for location: Stop, input: ShotListGenerationInput) async throws -> ShotListGenerationResult
 }
 
 @MainActor
@@ -30,7 +30,7 @@ struct ShotListGenerator: ShotListGenerating {
         self.aiService = aiService
     }
 
-    func generate(for location: ShootLocation, input: ShotListGenerationInput) async throws -> ShotListGenerationResult {
+    func generate(for location: Stop, input: ShotListGenerationInput) async throws -> ShotListGenerationResult {
         let prompt = buildPrompt(for: location, input: input)
         let rawResponse = try await aiService.generateShotPlan(for: prompt)
         let drafts = ShotPlanParser.parse(response: rawResponse)
@@ -42,10 +42,12 @@ struct ShotListGenerator: ShotListGenerating {
         )
     }
 
-    func buildPrompt(for location: ShootLocation, input: ShotListGenerationInput) -> String {
+    func buildPrompt(for location: Stop, input: ShotListGenerationInput) -> String {
         let shootWindowText = shootWindowPromptText(from: input)
         let cleanNotes = input.notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let locationCoordinates = "\(location.latitude.formatted(.number.precision(.fractionLength(5)))), \(location.longitude.formatted(.number.precision(.fractionLength(5))))"
+        let latitude = location.latitude ?? 0
+        let longitude = location.longitude ?? 0
+        let locationCoordinates = "\(latitude.formatted(.number.precision(.fractionLength(5)))), \(longitude.formatted(.number.precision(.fractionLength(5))))"
         let cachedContextSummary = cachedContextPromptSummary(for: location)
 
         var promptSections = [
@@ -86,7 +88,7 @@ struct ShotListGenerator: ShotListGenerating {
         return "\(startText) to \(endText)"
     }
 
-    private func cachedContextPromptSummary(for location: ShootLocation) -> String? {
+    private func cachedContextPromptSummary(for location: Stop) -> String? {
         guard let contextBundle = LocationContextBundle.decode(from: location.enrichmentJSON) else {
             return nil
         }

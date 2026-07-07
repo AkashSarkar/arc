@@ -293,6 +293,17 @@ nonisolated enum ArcDocumentCodec {
         return document
     }
 
+    static func decodePlanOrGuide(from data: Data) throws -> ArcPlanDocument {
+        let decoder = JSONDecoder()
+        let document = try decoder.decode(ArcPlanDocument.self, from: data)
+        try validate(document)
+        guard document.kind == .plan || document.kind == .guide else {
+            throw ArcDocumentError.invalidPlan("Unsupported Arc document kind.")
+        }
+
+        return document
+    }
+
     static func decodeGuide(from data: Data) throws -> ArcGuideDocument {
         let decoder = JSONDecoder()
         let document = try decoder.decode(ArcPlanDocument.self, from: data)

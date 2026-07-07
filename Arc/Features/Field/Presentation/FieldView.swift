@@ -1,10 +1,11 @@
+import MapKit
 import PhotosUI
 import SwiftData
 import SwiftUI
 import UIKit
 
 struct FieldView: View {
-    let location: ShootLocation
+    let trip: Trip
     let aiService: any AIServicing
     let locationEnricher: any LocationEnriching
     let referenceImageCache: any ReferenceImageCaching
@@ -13,6 +14,7 @@ struct FieldView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @AppStorage("Arc.FieldHighContrastMode") private var isHighContrastMode = false
+    @State private var selectedStopID: UUID?
     @State private var cacheStatus = ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
     @State private var isPresentingInfo = false
     @State private var isPresentingPlanEditor = false
@@ -24,98 +26,91 @@ struct FieldView: View {
     @State private var pendingStageOrderIndex: Int?
     @State private var hasDismissedCompletionPrompt = false
     @State private var photoAttachmentError: String?
-    @State private var editingNoteItem: ShootPlanItem?
+    @State private var editingNoteItem: CaptureItem?
 
-    private var plan: ShootPlan? {
-        guard let existingPlan = location.plan,
-              existingPlan.isApprovedForField,
-              existingPlan.completedAt == nil
-        else {
-            return nil
+    private var orderedStops: [Stop] {
+        trip.orderedStops
+    }
+
+    private var selectedStop: Stop? {
+        if let selectedStopID,
+           let stop = orderedStops.first(where: { $0.id == selectedStopID }) {
+            return stop
         }
 
-        return existingPlan
+        return trip.activeStop
     }
 
-    private var isImportedPlan: Bool {
-        plan?.source == .importedText
-    }
-
-    private var planItems: [ShootPlanItem] {
-        plan?.orderedItems ?? []
-    }
-
-    private var fieldStages: [FieldGuideStage] {
-        plan?.fieldStages ?? []
-    }
-
-    private var currentStage: FieldGuideStage? {
-        plan?.currentStage
-    }
-
-    private var currentStagePosition: Int? {
-        guard let currentStage else {
-            return nil
-        }
-
-        return fieldStages.firstIndex { $0.orderIndex == currentStage.orderIndex }
+    private var currentStage: Stage? {
+        selectedStop?.currentStage
     }
 
     private var hasPlanItems: Bool {
-        !planItems.isEmpty
+        !trip.allItems.isEmpty
     }
 
-    private var nextPendingItem: ShootPlanItem? {
-        currentStage?.items.first(where: { !$0.isResolved }) ?? planItems.first(where: { !$0.isResolved })
-    }
-
-    private var remainingCount: Int {
-        plan?.missingCount ?? 0
+    private var nextPendingItem: CaptureItem? {
+        currentStage?.missingItems.first ?? trip.allItems.first(where: { !$0.isResolved })
     }
 
     private var completionProgress: Double {
-        plan?.fieldCompletionProgress ?? 0
+        guard !trip.allItems.isEmpty else {
+            return 0
+        }
+
+        return Double(trip.resolvedCount) / Double(trip.allItems.count)
     }
 
     private var shouldShowCompletionPrompt: Bool {
-        hasPlanItems && remainingCount == 0 && !hasDismissedCompletionPrompt
+        hasPlanItems && trip.missingCount == 0 && !hasDismissedCompletionPrompt
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 FieldExecutionHeader(
-                    locationName: location.name,
-                    plan: plan,
-                    currentStage: currentStage,
+                    trip: trip,
+                    stop: selectedStop,
+                    stage: currentStage,
                     referenceStatus: referenceStatusText,
                     isHighContrast: isHighContrastMode
                 )
 
-                if hasPlanItems, let plan {
+                if hasPlanItems {
                     FieldProgressPanel(
-                        completedCount: plan.capturedCount,
-                        skippedCount: plan.skippedCount,
-                        totalCount: planItems.count,
-                        remainingCount: remainingCount,
+                        completedCount: trip.capturedCount,
+                        skippedCount: trip.skippedCount,
+                        totalCount: trip.allItems.count,
+                        remainingCount: trip.missingCount,
                         progress: completionProgress,
                         isHighContrast: isHighContrastMode
                     )
                 }
+
+                TripTimelinePanel(
+                    stops: orderedStops,
+                    selectedStopID: selectedStop?.id,
+                    selectStop: selectStop
+                )
+
+                TripMapPanel(stops: orderedStops, selectedStopID: selectedStop?.id)
 
                 if let photoAttachmentError {
                     ArcInlineError(message: photoAttachmentError)
                         .padding(.horizontal, 2)
                 }
 
-                if hasPlanItems, let stage = currentStage {
-                    FieldStageNavigator(
+                if hasPlanItems, let stop = selectedStop, let stage = currentStage {
+                    FieldStopControls(
+                        stop: stop,
                         stage: stage,
-                        currentPosition: currentStagePosition ?? 0,
-                        totalStages: fieldStages.count,
+                        currentPosition: currentStagePosition(in: stop),
+                        totalStages: stop.orderedStages.count,
                         isHighContrast: isHighContrastMode,
+                        arriveAction: { arrive(stop) },
                         previousAction: previousStage,
-                        nextAction: attemptNextStage
+                        nextAction: attemptNextStage,
+                        nextStopAction: advanceToNextStop
                     )
 
                     FieldStageCard(
@@ -128,13 +123,12 @@ struct FieldView: View {
                         editNote: { editingNoteItem = $0 }
                     )
 
-                    if let plan {
-                        FieldGuidanceCard(
-                            location: location,
-                            plan: plan,
-                            isHighContrast: isHighContrastMode
-                        )
-                    }
+                    FieldGuidanceCard(
+                        trip: trip,
+                        stop: stop,
+                        stage: stage,
+                        isHighContrast: isHighContrastMode
+                    )
                 } else {
                     FieldPlanRequiredCard()
                 }
@@ -171,13 +165,13 @@ struct FieldView: View {
                     .accessibilityLabel("Open story safety net")
                 }
 
-                if !isImportedPlan {
+                if selectedStop != nil {
                     Button {
                         isPresentingInfo = true
                     } label: {
                         Image(systemName: "info.circle")
                     }
-                    .accessibilityLabel("Plan info")
+                    .accessibilityLabel("Stop info")
                 }
 
                 Button {
@@ -186,14 +180,13 @@ struct FieldView: View {
                     Image(systemName: "pencil")
                 }
                 .accessibilityLabel("Edit plan")
-                .disabled(location.plan == nil)
 
                 Menu {
-                    if !isImportedPlan {
+                    if selectedStop != nil {
                         Button {
                             isPresentingEditLocation = true
                         } label: {
-                            Label("Edit Location", systemImage: "slider.horizontal.3")
+                            Label("Edit Stop Location", systemImage: "slider.horizontal.3")
                         }
                     }
 
@@ -204,14 +197,14 @@ struct FieldView: View {
                     Button {
                         isConfirmingFinish = true
                     } label: {
-                        Label("Complete Plan", systemImage: "checkmark.seal")
+                        Label("Complete Trip", systemImage: "checkmark.seal")
                     }
                     .disabled(!hasPlanItems)
 
                     Button(role: .destructive) {
                         isConfirmingDelete = true
                     } label: {
-                        Label("Delete Plan", systemImage: "trash")
+                        Label("Delete Trip", systemImage: "trash")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -220,450 +213,440 @@ struct FieldView: View {
             }
         }
         .sheet(isPresented: $isPresentingInfo) {
-            ShootInfoSheet(
-                location: location,
-                locationEnricher: locationEnricher,
-                referenceImageCache: referenceImageCache,
-                locationEditorServices: locationEditorServices
-            )
+            if let selectedStop {
+                ShootInfoSheet(
+                    stop: selectedStop,
+                    locationEnricher: locationEnricher,
+                    referenceImageCache: referenceImageCache,
+                    locationEditorServices: locationEditorServices
+                )
+            }
         }
         .sheet(isPresented: $isPresentingPlanEditor) {
             PlanEditorSheet(
-                location: location,
+                trip: trip,
                 aiService: aiService,
                 locationEnricher: locationEnricher,
                 referenceImageCache: referenceImageCache
             )
         }
         .sheet(isPresented: $isPresentingEditLocation) {
-            LocationEditorView(location: location, services: locationEditorServices) { draft in
-                location.name = draft.name
-                location.latitude = draft.coordinate.latitude
-                location.longitude = draft.coordinate.longitude
+            if let selectedStop {
+                LocationEditorView(location: selectedStop, services: locationEditorServices) { draft in
+                    selectedStop.name = draft.name
+                    selectedStop.placeName = draft.name
+                    selectedStop.latitude = draft.coordinate.latitude
+                    selectedStop.longitude = draft.coordinate.longitude
+                    try modelContext.save()
+                }
             }
         }
         .sheet(isPresented: $isPresentingSafetyNet) {
-            SafetyNetSheet(addItems: addSafetyNetItems)
+            SafetyNetSheet(
+                stop: selectedStop,
+                addTemplate: addSafetyNetItem
+            )
         }
         .sheet(item: $editingNoteItem) { item in
             FieldNoteEditorSheet(item: item) {
-                saveChanges()
+                try? modelContext.save()
             }
         }
-        .confirmationDialog("Complete this plan?", isPresented: $isConfirmingFinish, titleVisibility: .visible) {
-            Button("Complete Plan") {
-                finishShoot()
+        .confirmationDialog("Delete this trip?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("Delete Trip", role: .destructive) {
+                deleteTrip()
             }
-
             Button("Cancel", role: .cancel) {
             }
         } message: {
-            Text("The capture plan will move to Completed. You can reopen it later.")
+            Text("This removes the trip, stops, field guide, and export artifacts.")
+        }
+        .confirmationDialog("Complete this trip?", isPresented: $isConfirmingFinish, titleVisibility: .visible) {
+            Button(trip.isStorySafe ? "Complete Trip" : "Complete Anyway") {
+                completeTrip()
+            }
+            Button("Cancel", role: .cancel) {
+            }
+        } message: {
+            Text(finishDialogMessage)
         }
         .confirmationDialog("Move to the next stage?", isPresented: $isConfirmingStageAdvance, titleVisibility: .visible) {
             Button("Move Anyway") {
-                advanceToPendingStage()
+                if let pendingStageOrderIndex, let stop = selectedStop {
+                    setStage(pendingStageOrderIndex, in: stop)
+                }
+                pendingStageOrderIndex = nil
             }
-
-            Button("Cancel", role: .cancel) {
+            Button("Stay Here", role: .cancel) {
                 pendingStageOrderIndex = nil
             }
         } message: {
-            Text(stageAdvanceWarningText)
+            Text(stageAdvanceDialogMessage)
         }
-        .confirmationDialog("Delete this plan?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
-            Button("Delete Plan", role: .destructive) {
-                deleteShoot()
-            }
-
-            Button("Cancel", role: .cancel) {
+        .alert("Photo Could Not Be Attached", isPresented: Binding(
+            get: { photoAttachmentError != nil },
+            set: { if !$0 { photoAttachmentError = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                photoAttachmentError = nil
             }
         } message: {
-            Text("This removes the location, capture plan, and shot list.")
+            Text(photoAttachmentError ?? "")
         }
-        .task(id: location.enrichmentJSON) {
-            cacheStatus = referenceImageCache.cacheStatus(for: location)
+        .alert("Trip coverage complete", isPresented: Binding(
+            get: { shouldShowCompletionPrompt },
+            set: { if !$0 { hasDismissedCompletionPrompt = true } }
+        )) {
+            Button("Complete Trip") {
+                completeTrip()
+            }
+            Button("Keep Working", role: .cancel) {
+                hasDismissedCompletionPrompt = true
+            }
+        } message: {
+            Text("Every planned item has been captured or skipped. Complete the trip to generate the review script and export guide.")
+        }
+        .task {
+            activateTripIfNeeded()
+        }
+        .task(id: selectedStop?.id) {
+            if let selectedStop {
+                cacheStatus = referenceImageCache.cacheStatus(for: selectedStop)
+            }
         }
     }
 
-    @ViewBuilder
-    private var fieldBackground: some View {
-        if isHighContrastMode {
-            Color(uiColor: .systemBackground)
-                .ignoresSafeArea()
-        } else {
-            ArcSceneBackground()
-        }
-    }
-
-    private var referenceStatusText: String? {
-        guard !isImportedPlan, cacheStatus.totalImages > 0 else {
-            return nil
-        }
-
-        return "References \(cacheStatus.cachedImages)/\(cacheStatus.totalImages)"
-    }
-
-    @ViewBuilder
     private var fieldActionBar: some View {
-        if shouldShowCompletionPrompt {
-            ArcBottomActionBar(
-                title: "Field guide wrapped",
-                subtitle: "Complete to move this plan to Completed.",
-                primaryTitle: "Complete Plan",
-                primarySystemImage: "checkmark.seal",
-                secondaryTitle: "Keep Open",
-                secondarySystemImage: "xmark",
-                usesSolidBackground: isHighContrastMode,
-                primaryAction: { isConfirmingFinish = true },
-                secondaryAction: { hasDismissedCompletionPrompt = true }
-            )
-        } else if currentStage?.missingItems.isEmpty == true {
-            ArcBottomActionBar(
-                title: "Stage wrapped",
-                subtitle: "\(remainingCount) items left in the full guide.",
-                primaryTitle: isLastStage ? "Complete Plan" : "Next Stage",
-                primarySystemImage: isLastStage ? "checkmark.seal" : "arrow.right",
-                secondaryTitle: "Reset Stage",
-                secondarySystemImage: "arrow.counterclockwise",
-                usesSolidBackground: isHighContrastMode,
-                primaryAction: {
-                    if isLastStage {
-                        isConfirmingFinish = true
-                    } else {
-                        attemptNextStage()
-                    }
-                },
-                secondaryAction: resetCurrentStage
-            )
-        } else {
-            ArcBottomActionBar(
-                title: nextPendingItem?.title ?? "Next field item",
-                subtitle: "\(remainingCount) unresolved • \(completionProgress.formatted(.percent.precision(.fractionLength(0)))) complete",
-                primaryTitle: "Mark Next",
-                primarySystemImage: "checkmark.circle.fill",
-                secondaryTitle: isLastStage ? "Safety Net" : "Next Stage",
-                secondarySystemImage: isLastStage ? "lifepreserver" : "arrow.right",
-                usesSolidBackground: isHighContrastMode,
-                primaryAction: completeNextItem,
-                secondaryAction: {
-                    if isLastStage {
-                        isPresentingSafetyNet = true
-                    } else {
-                        attemptNextStage()
-                    }
-                }
-            )
+        FieldActionBar(
+            nextItemTitle: nextPendingItem?.title,
+            remainingCount: trip.missingCount,
+            isHighContrast: isHighContrastMode,
+            captureNext: captureNextPendingItem,
+            finishAction: { isConfirmingFinish = true }
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(.ultraThinMaterial)
+    }
+
+    private var fieldBackground: some View {
+        Group {
+            if isHighContrastMode {
+                Color.black.ignoresSafeArea()
+            } else {
+                ArcSceneBackground()
+            }
         }
     }
 
-    private var isLastStage: Bool {
-        guard let currentStagePosition else {
-            return true
+    private var referenceStatusText: String {
+        guard cacheStatus.totalImages > 0 else {
+            return "No offline refs"
         }
 
-        return currentStagePosition >= fieldStages.count - 1
+        return "\(cacheStatus.cachedImages)/\(cacheStatus.totalImages) refs"
     }
 
-    private var stageAdvanceWarningText: String {
-        let titles = blockingItemsForStageAdvance.map(\.title)
-        guard !titles.isEmpty else {
-            return "Some current-stage items are still unresolved."
+    private var finishDialogMessage: String {
+        if trip.isStorySafe {
+            return "Arc will generate an editing script and a shareable .arcguide export."
         }
 
-        return "Still missing: \(titles.prefix(4).joined(separator: ", "))."
+        return "\(trip.resolvedMustCount)/\(trip.mustCount) must-get items are resolved. Completing now will still create the review and export artifacts."
     }
 
-    private var blockingItemsForStageAdvance: [ShootPlanItem] {
-        guard let currentStage else {
-            return []
+    private var stageAdvanceDialogMessage: String {
+        guard let stage = currentStage else {
+            return "This stage still has unresolved must-get items."
         }
 
-        return currentStage.items.filter { item in
-            !item.isResolved && (item.priority == .must || item.isBeforeLeaving)
-        }
+        let titles = stage.unresolvedMustItems.prefix(3).map(\.title).joined(separator: ", ")
+        return titles.isEmpty ? "This stage still has unresolved must-get items." : "Unresolved must-get items: \(titles)"
     }
 
-    private func toggleItemCompletion(_ item: ShootPlanItem) {
-        withAnimation(.easeInOut(duration: 0.18)) {
+    private func activateTripIfNeeded() {
+        if trip.status == .planning {
+            trip.status = .active
+        }
+
+        if selectedStopID == nil {
+            selectedStopID = trip.activeStop?.id
+        }
+
+        if orderedStops.allSatisfy({ $0.status == .upcoming }), let first = orderedStops.first {
+            first.status = .active
+            first.arrivedAt = first.arrivedAt ?? Date()
+            selectedStopID = first.id
+        }
+
+        try? modelContext.save()
+    }
+
+    private func selectStop(_ stop: Stop) {
+        selectedStopID = stop.id
+        if trip.status == .planning {
+            trip.status = .active
+        }
+
+        if stop.status == .upcoming {
+            stop.status = .active
+            stop.arrivedAt = stop.arrivedAt ?? Date()
+        }
+
+        try? modelContext.save()
+        playImpact(.light)
+    }
+
+    private func currentStagePosition(in stop: Stop) -> Int {
+        guard let currentStage = stop.currentStage else {
+            return 0
+        }
+
+        return stop.orderedStages.firstIndex { $0.id == currentStage.id } ?? 0
+    }
+
+    private func arrive(_ stop: Stop) {
+        stop.status = .active
+        stop.arrivedAt = stop.arrivedAt ?? Date()
+        selectedStopID = stop.id
+        try? modelContext.save()
+        playImpact(.medium)
+    }
+
+    private func previousStage() {
+        guard let stop = selectedStop else {
+            return
+        }
+
+        let stages = stop.orderedStages
+        let index = currentStagePosition(in: stop)
+        guard index > 0 else {
+            return
+        }
+
+        setStage(stages[index - 1].orderIndex, in: stop)
+    }
+
+    private func attemptNextStage() {
+        guard let stop = selectedStop else {
+            return
+        }
+
+        let stages = stop.orderedStages
+        let index = currentStagePosition(in: stop)
+        guard index + 1 < stages.count else {
+            advanceToNextStop()
+            return
+        }
+
+        let nextOrderIndex = stages[index + 1].orderIndex
+        if let currentStage, !currentStage.unresolvedMustItems.isEmpty {
+            pendingStageOrderIndex = nextOrderIndex
+            isConfirmingStageAdvance = true
+            return
+        }
+
+        setStage(nextOrderIndex, in: stop)
+    }
+
+    private func setStage(_ orderIndex: Int, in stop: Stop) {
+        stop.currentStageOrderIndex = orderIndex
+        try? modelContext.save()
+        playImpact(.light)
+    }
+
+    private func advanceToNextStop() {
+        guard let stop = selectedStop,
+              let index = orderedStops.firstIndex(where: { $0.id == stop.id })
+        else {
+            return
+        }
+
+        stop.status = .done
+        stop.departedAt = stop.departedAt ?? Date()
+
+        if index + 1 < orderedStops.count {
+            let nextStop = orderedStops[index + 1]
+            nextStop.status = .active
+            nextStop.arrivedAt = nextStop.arrivedAt ?? Date()
+            selectedStopID = nextStop.id
+        }
+
+        try? modelContext.save()
+        playImpact(.medium)
+    }
+
+    private func toggleItemCompletion(_ item: CaptureItem) {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
             item.isCaptured.toggle()
+            item.capturedAt = item.isCaptured ? Date() : nil
             if item.isCaptured {
                 item.isSkipped = false
+                item.skippedAt = nil
             }
         }
 
-        photoAttachmentError = nil
-        hasDismissedCompletionPrompt = false
-        playImpact(item.isCaptured ? .medium : .light)
-        saveChanges()
+        try? modelContext.save()
+        playImpact(.light)
     }
 
-    private func toggleItemSkipped(_ item: ShootPlanItem) {
-        withAnimation(.easeInOut(duration: 0.18)) {
+    private func toggleItemSkipped(_ item: CaptureItem) {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
             item.isSkipped.toggle()
+            item.skippedAt = item.isSkipped ? Date() : nil
             if item.isSkipped {
                 item.isCaptured = false
+                item.capturedAt = nil
             }
         }
 
-        photoAttachmentError = nil
-        hasDismissedCompletionPrompt = false
+        try? modelContext.save()
         playImpact(.light)
-        saveChanges()
     }
 
-    private func completeNextItem() {
+    private func captureNextPendingItem() {
         guard let nextPendingItem else {
+            isConfirmingFinish = true
             return
         }
 
         toggleItemCompletion(nextPendingItem)
     }
 
-    private func resetCurrentStage() {
-        withAnimation(.easeInOut(duration: 0.18)) {
-            for item in currentStage?.items ?? [] {
-                item.isCaptured = false
-                item.isSkipped = false
-            }
-        }
-
-        photoAttachmentError = nil
-        hasDismissedCompletionPrompt = false
-        playImpact(.heavy)
-        saveChanges()
-    }
-
-    private func previousStage() {
-        guard let currentStagePosition, currentStagePosition > 0, let plan else {
-            return
-        }
-
-        plan.currentStageOrderIndex = fieldStages[currentStagePosition - 1].orderIndex
-        saveChanges()
-        playImpact(.light)
-    }
-
-    private func attemptNextStage() {
-        guard let currentStagePosition, currentStagePosition < fieldStages.count - 1 else {
-            return
-        }
-
-        pendingStageOrderIndex = fieldStages[currentStagePosition + 1].orderIndex
-        if blockingItemsForStageAdvance.isEmpty {
-            advanceToPendingStage()
-        } else {
-            isConfirmingStageAdvance = true
-        }
-    }
-
-    private func advanceToPendingStage() {
-        guard let pendingStageOrderIndex, let plan else {
-            return
-        }
-
-        plan.currentStageOrderIndex = pendingStageOrderIndex
-        self.pendingStageOrderIndex = nil
-        saveChanges()
-        playImpact(.light)
-    }
-
-    private func finishShoot() {
-        guard let plan else {
-            return
-        }
-
-        plan.completedAt = Date()
-        saveChanges()
-        playNotification(.success)
-        dismiss()
-    }
-
-    private func deleteShoot() {
-        modelContext.delete(location)
-        saveChanges()
-        playNotification(.warning)
-        dismiss()
-    }
-
-    private func attachPhoto(_ pickerItem: PhotosPickerItem?, to item: ShootPlanItem) {
+    private func attachPhoto(_ pickerItem: PhotosPickerItem?, to item: CaptureItem) {
         guard let pickerItem else {
             return
         }
 
-        Task {
+        Task { @MainActor in
             do {
                 guard let data = try await pickerItem.loadTransferable(type: Data.self) else {
-                    photoAttachmentError = "Arc could not load that image."
-                    playNotification(.error)
                     return
                 }
 
-                let storedData = compressedImageData(from: data) ?? data
-
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    item.capturedPhotoData = storedData
-                    item.capturedPhotoAttachedAt = Date()
-                    item.isCaptured = true
-                    item.isSkipped = false
-                }
-
-                photoAttachmentError = nil
-                hasDismissedCompletionPrompt = false
-                saveChanges()
-                playNotification(.success)
+                item.capturedPhotoData = data
+                item.capturedPhotoAttachedAt = Date()
+                item.isCaptured = true
+                item.capturedAt = item.capturedAt ?? Date()
+                item.isSkipped = false
+                item.skippedAt = nil
+                try modelContext.save()
+                playImpact(.medium)
             } catch {
                 photoAttachmentError = error.localizedDescription
-                playNotification(.error)
             }
         }
     }
 
-    private func removePhoto(from item: ShootPlanItem) {
-        withAnimation(.easeInOut(duration: 0.18)) {
-            item.capturedPhotoData = nil
-            item.capturedPhotoAttachedAt = nil
-        }
-
-        photoAttachmentError = nil
-        saveChanges()
+    private func removePhoto(from item: CaptureItem) {
+        item.capturedPhotoData = nil
+        item.capturedPhotoAttachedAt = nil
+        try? modelContext.save()
         playImpact(.light)
     }
 
-    private func addSafetyNetItems() {
-        guard let plan, let currentStage else {
+    private func addSafetyNetItem(_ template: SafetyNetTemplate) {
+        guard let stop = selectedStop else {
             return
         }
 
-        let nextOrderIndex = (planItems.map(\.orderIndex).max() ?? -1) + 1
-        let drafts = [
-            FieldGuideItemDraft(title: "Wide shot of where you are", guidance: "Hold for at least 8 to 10 seconds.", kind: .shot, priority: .must),
-            FieldGuideItemDraft(title: "Close-up of one useful detail", guidance: "Capture texture, sign, food, gear, hands, or an object.", kind: .shot, priority: .must),
-            FieldGuideItemDraft(title: "Hands or feet doing something", guidance: "Give the edit a human action cutaway.", kind: .shot, priority: .optional),
-            FieldGuideItemDraft(title: "Natural sound", guidance: "Record 10 seconds without talking.", kind: .sound, priority: .must),
-            FieldGuideItemDraft(title: "Honest reaction", guidance: "Say one line about what changed, surprised you, or mattered.", kind: .voice, priority: .must),
-            FieldGuideItemDraft(title: "Leaving shot", guidance: "Show yourself moving on from this place.", kind: .transition, priority: .must, isBeforeLeaving: true)
-        ]
+        let stage = safetyNetStage(for: stop)
+        let normalizedTitle = template.title.lowercased()
+        guard !stage.orderedItems.contains(where: { $0.title.lowercased() == normalizedTitle }) else {
+            stop.currentStageOrderIndex = stage.orderIndex
+            try? modelContext.save()
+            return
+        }
 
-        let unresolvedTitles = Set(
-            currentStage.items
-                .filter { !$0.isResolved }
-                .map { normalizedSafetyNetTitle($0.title) }
+        let item = CaptureItem(
+            orderIndex: stage.orderedItems.count,
+            title: template.title,
+            guidance: template.guidance,
+            kind: template.kind,
+            priority: .must,
+            isBeforeLeaving: template.kind == .transition,
+            origin: .safetyNet,
+            stage: stage
         )
-        var appendedCount = 0
-
-        for draft in drafts where !unresolvedTitles.contains(normalizedSafetyNetTitle(draft.title)) {
-            let item = ShootPlanItem(
-                orderIndex: nextOrderIndex + appendedCount,
-                title: draft.title,
-                role: "Safety Net",
-                guidance: draft.guidance,
-                stageTitle: currentStage.title,
-                stageOrderIndex: currentStage.orderIndex,
-                stageGoal: currentStage.goal,
-                kind: draft.kind,
-                priority: draft.priority,
-                isBeforeLeaving: draft.isBeforeLeaving,
-                plan: plan
-            )
-            modelContext.insert(item)
-            plan.items.append(item)
-            appendedCount += 1
-        }
-
-        saveChanges()
-        isPresentingSafetyNet = false
-        playNotification(.success)
-    }
-
-    private func saveChanges() {
+        stage.items.append(item)
+        stop.currentStageOrderIndex = stage.orderIndex
         try? modelContext.save()
+        playImpact(.medium)
     }
 
-    private func normalizedSafetyNetTitle(_ title: String) -> String {
-        title
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    private func safetyNetStage(for stop: Stop) -> Stage {
+        if let existing = stop.orderedStages.first(where: { $0.kind == .safetyNet }) {
+            return existing
+        }
+
+        let stage = Stage(
+            orderIndex: stop.orderedStages.count,
+            title: "Safety Net",
+            goal: "Patch story gaps before leaving the stop.",
+            kind: .safetyNet,
+            stop: stop
+        )
+        stop.stages.append(stage)
+        return stage
     }
 
-    private func compressedImageData(from data: Data) -> Data? {
-        guard let image = UIImage(data: data) else {
-            return nil
+    private func completeTrip() {
+        trip.status = .completed
+        trip.completedAt = Date()
+
+        if let selectedStop {
+            selectedStop.status = .done
+            selectedStop.departedAt = selectedStop.departedAt ?? Date()
         }
 
-        let maxSide: CGFloat = 1_600
-        let size = image.size
-        let longestSide = max(size.width, size.height)
-        let scale = longestSide > maxSide ? maxSide / longestSide : 1
-        let targetSize = CGSize(width: size.width * scale, height: size.height * scale)
+        _ = TripDocumentMapper.generateScriptArtifact(for: trip)
+        try? modelContext.save()
+        dismiss()
+    }
 
-        let renderer = UIGraphicsImageRenderer(size: targetSize)
-        let resizedImage = renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-
-        return resizedImage.jpegData(compressionQuality: 0.76)
+    private func deleteTrip() {
+        modelContext.delete(trip)
+        try? modelContext.save()
+        dismiss()
     }
 
     private func playImpact(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
         UIImpactFeedbackGenerator(style: style).impactOccurred()
     }
-
-    private func playNotification(_ type: UINotificationFeedbackGenerator.FeedbackType) {
-        UINotificationFeedbackGenerator().notificationOccurred(type)
-    }
 }
 
 private struct FieldExecutionHeader: View {
-    let locationName: String
-    let plan: ShootPlan?
-    let currentStage: FieldGuideStage?
-    let referenceStatus: String?
+    let trip: Trip
+    let stop: Stop?
+    let stage: Stage?
+    let referenceStatus: String
     let isHighContrast: Bool
 
     var body: some View {
-        ArcCompactHeroHeader(
-            systemImage: plan?.source == .importedText ? "rectangle.stack.fill" : "checklist.checked",
-            title: locationName,
-            summary: summary,
-            tint: ArcPalette.tint
+        ArcHeroHeader(
+            systemImage: "camera.viewfinder",
+            title: trip.title,
+            subtitle: summary,
+            badges: badges
         )
-
-        if let plan {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ArcStatusPill(plan.source.title, systemImage: plan.source == .importedText ? "square.and.arrow.down" : "mappin.and.ellipse")
-                    ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
-                    ArcStatusPill(plan.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
-                    ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
-
-                    if let referenceStatus {
-                        ArcStatusPill(referenceStatus, systemImage: "arrow.down.circle", tint: ArcPalette.tint)
-                    }
-                }
-            }
-        }
-
-        if isHighContrast {
-            ArcStatusPill("High Contrast", systemImage: "sun.max.fill", tint: ArcPalette.tint)
-        }
+        .accessibilityElement(children: .combine)
     }
 
     private var summary: String {
-        guard let plan else {
-            return "No active field guide"
+        if let stop, let stage {
+            return "\(stop.name) - \(stage.mantra)"
         }
 
-        if let currentStage {
-            if !currentStage.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return currentStage.goal
-            }
+        return trip.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Work each stop, stage, and must-get item." : trip.summary
+    }
 
-            return "Current stage: \(currentStage.title)"
-        }
-
-        return "\(plan.outputIntent.title) - \(plan.captureMedium.title) - \(plan.targetPlatform.title)"
+    private var badges: [ArcHeroBadge] {
+        [
+            ArcHeroBadge(label: "\(trip.resolvedCount)/\(trip.allItems.count)", systemImage: "checkmark.circle"),
+            ArcHeroBadge(label: "\(trip.orderedStops.count) stops", systemImage: "map"),
+            ArcHeroBadge(label: referenceStatus, systemImage: "arrow.down.circle")
+        ]
     }
 }
 
@@ -676,123 +659,290 @@ private struct FieldProgressPanel: View {
     let isHighContrast: Bool
 
     var body: some View {
-        ArcDenseCard(accent: ArcPalette.tint) {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    ArcMetricTile(title: "Captured", value: "\(completedCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
-                    ArcMetricTile(title: "Skipped", value: "\(skippedCount)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
-                    ArcMetricTile(title: "Missing", value: "\(remainingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
+        ArcDenseCard(accent: isHighContrast ? .white : ArcPalette.tint) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Field Progress")
+                        .font(.headline)
+                    Text("\(remainingCount) remaining")
+                        .font(.subheadline)
+                        .foregroundStyle(isHighContrast ? .white.opacity(0.82) : .secondary)
                 }
 
-                VStack(spacing: 10) {
-                    ArcMetricTile(title: "Captured", value: "\(completedCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
-                    ArcMetricTile(title: "Skipped", value: "\(skippedCount)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
-                    ArcMetricTile(title: "Missing", value: "\(remainingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
-                }
+                Spacer()
+
+                Text("\(completedCount + skippedCount)/\(totalCount)")
+                    .font(.title3.monospacedDigit().weight(.semibold))
             }
 
-            FieldProgressSection(
-                progress: progress,
-                resolvedText: "\(completedCount + skippedCount)/\(totalCount) resolved",
-                isHighContrast: isHighContrast
-            )
+            FieldProgressBar(progress: progress)
+                .frame(height: 8)
+
+            HStack(spacing: 8) {
+                ArcStatusPill("\(completedCount) captured", systemImage: "checkmark.circle", tint: isHighContrast ? .white : ArcPalette.tint)
+                ArcStatusPill("\(skippedCount) skipped", systemImage: "forward.circle", tint: isHighContrast ? .white.opacity(0.8) : ArcPalette.glowSecondary)
+            }
         }
     }
 }
 
-private struct FieldStageNavigator: View {
-    let stage: FieldGuideStage
-    let currentPosition: Int
-    let totalStages: Int
-    let isHighContrast: Bool
-    let previousAction: () -> Void
-    let nextAction: () -> Void
+private struct TripTimelinePanel: View {
+    let stops: [Stop]
+    let selectedStopID: UUID?
+    let selectStop: (Stop) -> Void
 
     var body: some View {
         ArcDenseCard(accent: ArcPalette.glowSecondary) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Stage \(currentPosition + 1) of \(totalStages)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+            ArcFeatureTitle(
+                systemImage: "point.topleft.down.curvedto.point.bottomright.up",
+                title: "Trip Timeline",
+                subtitle: stops.isEmpty ? "No stops yet." : "\(stops.count) stops",
+                accent: ArcPalette.glowSecondary
+            )
 
-                    Text(stage.title)
-                        .font(isHighContrast ? .title2.weight(.semibold) : .headline)
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
+            if stops.isEmpty {
+                Text("Import or add a plan to create stops.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(stops) { stop in
+                            Button {
+                                selectStop(stop)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 7) {
+                                    Label(stop.status.title, systemImage: systemImage(for: stop.status))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(stop.id == selectedStopID ? ArcPalette.tint : .secondary)
 
-                    if !stage.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Label(stage.goal, systemImage: "scope")
-                            .font(isHighContrast ? .body.weight(.medium) : .subheadline.weight(.medium))
-                            .foregroundStyle(isHighContrast ? .primary : .secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                                    Text(stop.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+
+                                    Text("\(stop.allItems.filter(\.isResolved).count)/\(stop.allItems.count) resolved")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(width: 168, alignment: .leading)
+                                .padding(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                        .fill(stop.id == selectedStopID ? ArcPalette.tint.opacity(0.14) : ArcPalette.elevatedSurface)
+                                )
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                        .stroke(stop.id == selectedStopID ? ArcPalette.tint.opacity(0.45) : ArcPalette.surfaceStroke, lineWidth: 1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-
-                    Text("\(stage.resolvedCount)/\(stage.items.count) resolved")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 8) {
-                    Button(action: previousAction) {
-                        Image(systemName: "chevron.left")
-                            .frame(width: 38, height: 30)
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(currentPosition == 0)
-                    .accessibilityLabel("Previous stage")
-
-                    Button(action: nextAction) {
-                        Image(systemName: "chevron.right")
-                            .frame(width: 38, height: 30)
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(currentPosition >= totalStages - 1)
-                    .accessibilityLabel("Next stage")
                 }
             }
+        }
+    }
 
-            FieldProgressBar(progress: stage.progress)
-                .frame(height: 8)
+    private func systemImage(for status: StopStatus) -> String {
+        switch status {
+        case .upcoming:
+            return "circle"
+        case .active:
+            return "record.circle"
+        case .done:
+            return "checkmark.circle"
+        case .skipped:
+            return "forward.circle"
+        }
+    }
+}
+
+private struct TripMapPanel: View {
+    let stops: [Stop]
+    let selectedStopID: UUID?
+
+    private var points: [StopMapPoint] {
+        stops.compactMap { stop in
+            guard let latitude = stop.latitude, let longitude = stop.longitude else {
+                return nil
+            }
+
+            return StopMapPoint(
+                id: stop.id,
+                title: stop.name,
+                coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            )
+        }
+    }
+
+    var body: some View {
+        ArcDenseCard(accent: ArcPalette.glowPrimary) {
+            ArcFeatureTitle(
+                systemImage: "map",
+                title: "Map",
+                subtitle: points.isEmpty ? "Set coordinates for stops to show them here." : "\(points.count) mapped stops",
+                accent: ArcPalette.glowPrimary
+            )
+
+            if !points.isEmpty {
+                Map(initialPosition: .region(region(for: points))) {
+                    ForEach(points) { point in
+                        Marker(point.title, systemImage: point.id == selectedStopID ? "record.circle" : "mappin", coordinate: point.coordinate)
+                    }
+                }
+                .frame(height: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func region(for points: [StopMapPoint]) -> MKCoordinateRegion {
+        guard let first = points.first else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+                span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1)
+            )
+        }
+
+        let latitudes = points.map { $0.coordinate.latitude }
+        let longitudes = points.map { $0.coordinate.longitude }
+        let minLatitude = latitudes.min() ?? first.coordinate.latitude
+        let maxLatitude = latitudes.max() ?? first.coordinate.latitude
+        let minLongitude = longitudes.min() ?? first.coordinate.longitude
+        let maxLongitude = longitudes.max() ?? first.coordinate.longitude
+        let center = CLLocationCoordinate2D(
+            latitude: (minLatitude + maxLatitude) / 2,
+            longitude: (minLongitude + maxLongitude) / 2
+        )
+        let latitudeDelta = max(0.01, (maxLatitude - minLatitude) * 1.8)
+        let longitudeDelta = max(0.01, (maxLongitude - minLongitude) * 1.8)
+
+        return MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(latitudeDelta: latitudeDelta, longitudeDelta: longitudeDelta)
+        )
+    }
+}
+
+private struct StopMapPoint: Identifiable {
+    let id: UUID
+    let title: String
+    let coordinate: CLLocationCoordinate2D
+}
+
+private struct FieldStopControls: View {
+    let stop: Stop
+    let stage: Stage
+    let currentPosition: Int
+    let totalStages: Int
+    let isHighContrast: Bool
+    let arriveAction: () -> Void
+    let previousAction: () -> Void
+    let nextAction: () -> Void
+    let nextStopAction: () -> Void
+
+    var body: some View {
+        ArcDenseCard(accent: isHighContrast ? .white : ArcPalette.glowPrimary) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(stop.name)
+                        .font(.headline)
+                    Text("Stage \(currentPosition + 1) of \(max(totalStages, 1)) - \(stage.title)")
+                        .font(.subheadline)
+                        .foregroundStyle(isHighContrast ? .white.opacity(0.82) : .secondary)
+                }
+
+                Spacer()
+
+                ArcStatusPill(stop.status.title, systemImage: stop.status == .active ? "record.circle" : "circle", tint: isHighContrast ? .white : ArcPalette.glowPrimary)
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    controls
+                }
+
+                VStack(spacing: 10) {
+                    controls
+                }
+            }
+        }
+    }
+
+    private var controls: some View {
+        Group {
+            Button {
+                arriveAction()
+            } label: {
+                Label("Arrive", systemImage: "location.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+
+            Button {
+                previousAction()
+            } label: {
+                Label("Previous", systemImage: "chevron.left")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+            .disabled(currentPosition == 0)
+
+            Button {
+                nextAction()
+            } label: {
+                Label(currentPosition + 1 >= totalStages ? "Next Stop" : "Next", systemImage: "chevron.right")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glassProminent)
         }
     }
 }
 
 private struct FieldStageCard: View {
-    let stage: FieldGuideStage
+    let stage: Stage
     let isHighContrast: Bool
-    let toggleCaptured: (ShootPlanItem) -> Void
-    let toggleSkipped: (ShootPlanItem) -> Void
-    let attachPhoto: (PhotosPickerItem?, ShootPlanItem) -> Void
-    let removePhoto: (ShootPlanItem) -> Void
-    let editNote: (ShootPlanItem) -> Void
+    let toggleCaptured: (CaptureItem) -> Void
+    let toggleSkipped: (CaptureItem) -> Void
+    let attachPhoto: (PhotosPickerItem?, CaptureItem) -> Void
+    let removePhoto: (CaptureItem) -> Void
+    let editNote: (CaptureItem) -> Void
 
-    private var mustCaptureItems: [ShootPlanItem] {
-        stage.items.filter { !$0.isBeforeLeaving && $0.priority == .must && ![.voice, .sound, .transition].contains($0.kind) }
+    private var mustCaptureItems: [CaptureItem] {
+        stage.orderedItems.filter { $0.priority == .must && !$0.isBeforeLeaving }
     }
 
-    private var optionalItems: [ShootPlanItem] {
-        stage.items.filter { !$0.isBeforeLeaving && $0.priority == .optional && ![.voice, .sound, .transition].contains($0.kind) }
+    private var optionalItems: [CaptureItem] {
+        stage.orderedItems.filter { $0.priority == .optional && !$0.isBeforeLeaving }
     }
 
-    private var voiceSoundTransitionItems: [ShootPlanItem] {
-        stage.items.filter { !$0.isBeforeLeaving && [.voice, .sound, .transition].contains($0.kind) }
+    private var voiceSoundTransitionItems: [CaptureItem] {
+        stage.orderedItems.filter { ($0.kind == .voice || $0.kind == .sound || $0.kind == .transition) && !$0.isBeforeLeaving }
     }
 
-    private var beforeLeavingItems: [ShootPlanItem] {
-        stage.items.filter(\.isBeforeLeaving)
+    private var beforeLeavingItems: [CaptureItem] {
+        stage.orderedItems.filter(\.isBeforeLeaving)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ArcDenseCard(accent: isHighContrast ? .white : ArcPalette.tint) {
+            ArcFeatureTitle(
+                systemImage: stage.kind == .safetyNet ? "lifepreserver" : "rectangle.stack",
+                title: stage.title,
+                subtitle: stage.mantra,
+                accent: isHighContrast ? .white : ArcPalette.tint
+            )
+
+            FieldProgressBar(progress: stage.progress)
+                .frame(height: 8)
+
             FieldItemSection(
-                title: "Must Capture",
-                systemImage: "checklist",
+                title: "Must capture",
+                emptyMessage: "No must-get items in this stage.",
                 items: mustCaptureItems,
-                emptyText: "No must-capture items in this stage.",
-                isHighContrast: isHighContrast,
+                tint: isHighContrast ? .white : ArcPalette.tint,
                 toggleCaptured: toggleCaptured,
                 toggleSkipped: toggleSkipped,
                 attachPhoto: attachPhoto,
@@ -800,87 +950,82 @@ private struct FieldStageCard: View {
                 editNote: editNote
             )
 
-            FieldItemSection(
-                title: "Voice / Sound / Transition",
-                systemImage: "waveform",
-                items: voiceSoundTransitionItems,
-                emptyText: "No voice, sound, or transition prompts.",
-                isHighContrast: isHighContrast,
-                toggleCaptured: toggleCaptured,
-                toggleSkipped: toggleSkipped,
-                attachPhoto: attachPhoto,
-                removePhoto: removePhoto,
-                editNote: editNote
-            )
+            if !voiceSoundTransitionItems.isEmpty {
+                FieldItemSection(
+                    title: "Voice, sound, transitions",
+                    emptyMessage: "",
+                    items: voiceSoundTransitionItems,
+                    tint: isHighContrast ? .white : ArcPalette.glowSecondary,
+                    toggleCaptured: toggleCaptured,
+                    toggleSkipped: toggleSkipped,
+                    attachPhoto: attachPhoto,
+                    removePhoto: removePhoto,
+                    editNote: editNote
+                )
+            }
 
-            FieldItemSection(
-                title: "Optional",
-                systemImage: "sparkles",
-                items: optionalItems,
-                emptyText: "No optional items in this stage.",
-                isHighContrast: isHighContrast,
-                toggleCaptured: toggleCaptured,
-                toggleSkipped: toggleSkipped,
-                attachPhoto: attachPhoto,
-                removePhoto: removePhoto,
-                editNote: editNote
-            )
+            if !optionalItems.isEmpty {
+                FieldItemSection(
+                    title: "Optional coverage",
+                    emptyMessage: "",
+                    items: optionalItems,
+                    tint: isHighContrast ? .white : ArcPalette.glowPrimary,
+                    toggleCaptured: toggleCaptured,
+                    toggleSkipped: toggleSkipped,
+                    attachPhoto: attachPhoto,
+                    removePhoto: removePhoto,
+                    editNote: editNote
+                )
+            }
 
-            FieldItemSection(
-                title: "Before You Leave",
-                systemImage: "figure.walk.departure",
-                items: beforeLeavingItems,
-                emptyText: "No before-leaving checks.",
-                isHighContrast: isHighContrast,
-                toggleCaptured: toggleCaptured,
-                toggleSkipped: toggleSkipped,
-                attachPhoto: attachPhoto,
-                removePhoto: removePhoto,
-                editNote: editNote
-            )
-        }
-        .padding(isHighContrast ? 18 : 20)
-        .background(isHighContrast ? Color(uiColor: .secondarySystemBackground) : ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
+            if !beforeLeavingItems.isEmpty {
+                FieldItemSection(
+                    title: "Before leaving",
+                    emptyMessage: "",
+                    items: beforeLeavingItems,
+                    tint: isHighContrast ? .white : ArcPalette.glowSecondary,
+                    toggleCaptured: toggleCaptured,
+                    toggleSkipped: toggleSkipped,
+                    attachPhoto: attachPhoto,
+                    removePhoto: removePhoto,
+                    editNote: editNote
+                )
+            }
         }
     }
 }
 
 private struct FieldItemSection: View {
     let title: String
-    let systemImage: String
-    let items: [ShootPlanItem]
-    let emptyText: String
-    let isHighContrast: Bool
-    let toggleCaptured: (ShootPlanItem) -> Void
-    let toggleSkipped: (ShootPlanItem) -> Void
-    let attachPhoto: (PhotosPickerItem?, ShootPlanItem) -> Void
-    let removePhoto: (ShootPlanItem) -> Void
-    let editNote: (ShootPlanItem) -> Void
+    let emptyMessage: String
+    let items: [CaptureItem]
+    let tint: Color
+    let toggleCaptured: (CaptureItem) -> Void
+    let toggleSkipped: (CaptureItem) -> Void
+    let attachPhoto: (PhotosPickerItem?, CaptureItem) -> Void
+    let removePhoto: (CaptureItem) -> Void
+    let editNote: (CaptureItem) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ArcFeatureTitle(
-                systemImage: systemImage,
-                title: title,
-                subtitle: items.isEmpty ? nil : "\(items.filter(\.isResolved).count)/\(items.count) resolved",
-                accent: title == "Before You Leave" ? ArcPalette.glowPrimary : ArcPalette.tint
-            )
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
 
             if items.isEmpty {
-                Text(emptyText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                if !emptyMessage.isEmpty {
+                    Text(emptyMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 ForEach(items) { item in
                     FieldChecklistRow(
                         item: item,
-                        isHighContrast: isHighContrast,
+                        tint: tint,
                         toggleCaptured: { toggleCaptured(item) },
                         toggleSkipped: { toggleSkipped(item) },
-                        attachPhoto: { pickerItem in attachPhoto(pickerItem, item) },
+                        attachPhoto: { attachPhoto($0, item) },
                         removePhoto: { removePhoto(item) },
                         editNote: { editNote(item) }
                     )
@@ -891,13 +1036,15 @@ private struct FieldItemSection: View {
 }
 
 private struct FieldChecklistRow: View {
-    let item: ShootPlanItem
-    let isHighContrast: Bool
+    let item: CaptureItem
+    let tint: Color
     let toggleCaptured: () -> Void
     let toggleSkipped: () -> Void
     let attachPhoto: (PhotosPickerItem?) -> Void
     let removePhoto: () -> Void
     let editNote: () -> Void
+
+    @State private var selectedPhotoItem: PhotosPickerItem?
 
     private var thumbnailImage: UIImage? {
         guard let data = item.capturedPhotoData else {
@@ -908,40 +1055,27 @@ private struct FieldChecklistRow: View {
     }
 
     var body: some View {
-        let hasAttachedPhoto = item.capturedPhotoData != nil
+        let photoButtonTitle = item.capturedPhotoData == nil ? "Photo" : "Replace"
 
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
                 Button(action: toggleCaptured) {
                     Image(systemName: item.isCaptured ? "checkmark.circle.fill" : "circle")
-                        .font((isHighContrast ? Font.title2 : .title3).weight(.semibold))
-                        .foregroundStyle(item.isCaptured ? ArcPalette.tint : .secondary)
-                        .padding(.top, 2)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(item.isCaptured ? tint : .secondary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.isCaptured ? "Mark not captured" : "Mark captured")
 
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(item.title)
-                            .font(isHighContrast ? .title3.weight(.semibold) : .headline)
-                            .foregroundStyle(item.isSkipped ? .secondary : .primary)
-                            .strikethrough(item.isSkipped)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.headline)
+                        .strikethrough(item.isSkipped)
+                        .foregroundStyle(item.isSkipped ? .secondary : .primary)
 
-                        Spacer(minLength: 0)
-
-                        HStack(spacing: 6) {
-                            ArcStatusPill(item.displayRoleTitle, systemImage: item.kind.systemImage, tint: item.isBeforeLeaving ? ArcPalette.glowPrimary : ArcPalette.tint)
-
-                            if item.priority == .must {
-                                ArcStatusPill("Must", systemImage: "exclamationmark", tint: ArcPalette.glowPrimary)
-                            }
-                        }
-                    }
-
-                    Text(item.guidance)
-                        .font(isHighContrast ? .body : .subheadline)
-                        .foregroundStyle(isHighContrast ? .primary : .secondary)
+                    Text("\(item.displayRoleTitle) - \(item.priority.title). \(item.guidance)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if !item.fieldNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -951,156 +1085,94 @@ private struct FieldChecklistRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if let thumbnailImage {
-                Image(uiImage: thumbnailImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(height: 132)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(alignment: .topTrailing) {
-                        ArcStatusPill("Snap attached", systemImage: "photo.fill", tint: ArcPalette.tint)
+                ZStack(alignment: .topTrailing) {
+                    Image(uiImage: thumbnailImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(height: 130)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    Button(action: removePhoto) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .black.opacity(0.55))
                             .padding(8)
                     }
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    actionButtons(hasAttachedPhoto: hasAttachedPhoto)
-                }
-
-                VStack(spacing: 8) {
-                    actionButtons(hasAttachedPhoto: hasAttachedPhoto)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove attached photo")
                 }
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(isHighContrast ? 20 : 18)
-        .background(isHighContrast ? Color(uiColor: .systemBackground) : ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(rowStrokeColor, lineWidth: isHighContrast ? 1.5 : 1)
-        }
-    }
 
-    private var rowStrokeColor: Color {
-        if item.isCaptured {
-            return ArcPalette.tint.opacity(isHighContrast ? 0.75 : 0.45)
-        }
-
-        if item.isSkipped {
-            return ArcPalette.glowSecondary.opacity(isHighContrast ? 0.75 : 0.45)
-        }
-
-        return isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke
-    }
-
-    private func actionButtons(hasAttachedPhoto: Bool) -> some View {
-        Group {
-            Button(action: toggleSkipped) {
-                Label(item.isSkipped ? "Unskip" : "Skip", systemImage: "forward")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glass)
-
-            Button(action: editNote) {
-                Label(item.fieldNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Note" : "Edit Note", systemImage: "note.text")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glass)
-
-            PhotosPicker(
-                selection: Binding<PhotosPickerItem?>(
-                    get: { nil },
-                    set: { attachPhoto($0) }
-                ),
-                matching: .images,
-                photoLibrary: .shared()
-            ) {
-                Label(hasAttachedPhoto ? "Replace" : "Snap", systemImage: "camera.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glass)
-
-            if hasAttachedPhoto {
-                Button(role: .destructive, action: removePhoto) {
-                    Image(systemName: "trash")
-                        .frame(width: 44, height: 20)
+            HStack(spacing: 8) {
+                Button(action: toggleSkipped) {
+                    Label(item.isSkipped ? "Unskip" : "Skip", systemImage: item.isSkipped ? "arrow.uturn.backward" : "forward.end")
                 }
                 .buttonStyle(.glass)
-                .accessibilityLabel("Remove attached snap")
+
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    Label(photoButtonTitle, systemImage: "photo")
+                }
+                .buttonStyle(.glass)
+                .onChange(of: selectedPhotoItem) { _, newValue in
+                    attachPhoto(newValue)
+                    selectedPhotoItem = nil
+                }
+
+                Button(action: editNote) {
+                    Label("Note", systemImage: "note.text")
+                }
+                .buttonStyle(.glass)
             }
+            .font(.caption.weight(.semibold))
+        }
+        .padding(12)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(item.isResolved ? tint.opacity(0.38) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
 
 private struct FieldGuidanceCard: View {
-    let location: ShootLocation
-    let plan: ShootPlan
+    let trip: Trip
+    let stop: Stop
+    let stage: Stage
     let isHighContrast: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        ArcFeatureCard(accent: isHighContrast ? .white : ArcPalette.glowSecondary) {
             ArcFeatureTitle(
-                systemImage: "eye.fill",
-                title: plan.source == .importedText ? "Story Guide" : "Reminders",
-                subtitle: nil,
-                accent: ArcPalette.glowSecondary
+                systemImage: "quote.bubble",
+                title: "Field Guidance",
+                subtitle: stage.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? trip.targetPlatform.title : stage.goal,
+                accent: isHighContrast ? .white : ArcPalette.glowSecondary
             )
 
-            if plan.source == .importedText, !plan.storySummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(plan.storySummary)
-                    .font(isHighContrast ? .body : .subheadline)
-                    .foregroundStyle(isHighContrast ? .primary : .secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                FieldGuidanceRow(
-                    systemImage: "sparkles.rectangle.stack",
-                    title: "Stay on brief",
-                    subtitle: "Keep the \(plan.outputIntent.title) set coherent while capturing \(location.name)."
-                )
-
-                FieldGuidanceRow(
-                    systemImage: "mountain.2.fill",
-                    title: "Open wide first",
-                    subtitle: "Anchor \(location.name) before moving into details."
-                )
-
-                FieldGuidanceRow(
-                    systemImage: "rectangle.portrait.and.arrow.right",
-                    title: "Grab one vertical cutaway",
-                    subtitle: "Leave with one detail or motion frame for the edit."
-                )
+            VStack(alignment: .leading, spacing: 8) {
+                guidanceLine("Stop", stop.coordinateSummary)
+                guidanceLine("Output", "\(trip.outputIntent.title) for \(trip.targetPlatform.title)")
+                guidanceLine("Before moving on", stage.unresolvedMustItems.isEmpty ? "Must-get coverage is clear." : "\(stage.unresolvedMustItems.count) must-get items remain.")
             }
-        }
-        .padding(20)
-        .background(isHighContrast ? Color(uiColor: .secondarySystemBackground) : ArcPalette.solidFieldSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
-}
 
-private struct FieldGuidanceRow: View {
-    let systemImage: String
-    let title: String
-    let subtitle: String
+    private func guidanceLine(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 96, alignment: .leading)
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            ArcMiniIconBadge(systemImage: systemImage, tint: ArcPalette.glowSecondary)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(value)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -1109,109 +1181,64 @@ private struct FieldPlanRequiredCard: View {
     var body: some View {
         ArcFeatureCard(accent: ArcPalette.glowPrimary) {
             ArcFeatureTitle(
-                systemImage: "checklist",
-                title: "No active field guide",
-                subtitle: nil,
+                systemImage: "exclamationmark.triangle",
+                title: "Plan needed",
+                subtitle: "Import a trip plan or add field items before starting execution.",
                 accent: ArcPalette.glowPrimary
             )
-
-            Text("Start or import a capture plan from Capture Plans to create a field-ready guide.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct FieldProgressSection: View {
-    let progress: Double
-    let resolvedText: String
-    let isHighContrast: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Progress")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text(progress.formatted(.percent.precision(.fractionLength(0))))
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(ArcPalette.tint)
-            }
-
-            FieldProgressBar(progress: progress)
-
-            Label(resolvedText, systemImage: "camera.metering.center.weighted.average")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .padding(14)
-        .background(isHighContrast ? Color(uiColor: .systemBackground) : ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(isHighContrast ? Color.primary.opacity(0.20) : ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }
 
 private struct SafetyNetSheet: View {
-    let addItems: () -> Void
+    let stop: Stop?
+    let addTemplate: (SafetyNetTemplate) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
-    private let items = [
-        ("Wide shot", "Show where you are."),
-        ("Close detail", "Capture one object, texture, sign, food, or piece of gear."),
-        ("Human action", "Hands, feet, walking, packing, checking, eating, opening."),
-        ("Natural sound", "Record 10 seconds without talking."),
-        ("Honest reaction", "Say one line about what changed or mattered."),
-        ("Leaving shot", "Show the transition away from this place.")
-    ]
+    private let templates = SafetyNetTemplate.defaults
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     ArcCompactHeroHeader(
-                        systemImage: "lifepreserver",
-                        title: "Story Safety Net",
-                        summary: "When you feel lost, capture this recovery set."
+                        systemImage: "lifepreserver.fill",
+                        title: "Safety Net",
+                        summary: stop == nil ? "Choose a stop first." : "Patch common story gaps before leaving."
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }
 
-                Section("Recovery Set") {
-                    ForEach(items, id: \.0) { item in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.0)
-                                .font(.headline)
-                            Text(item.1)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                Section {
+                    ForEach(templates) { template in
+                        Button {
+                            addTemplate(template)
+                            dismiss()
+                        } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Label(template.title, systemImage: template.kind.systemImage)
+                                    .font(.headline)
+                                Text(template.guidance)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .disabled(stop == nil)
                     }
                 }
             }
+            .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(ArcSceneBackground())
             .navigationTitle("Safety Net")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add") {
-                        addItems()
+                    Button("Done") {
                         dismiss()
                     }
                 }
@@ -1220,14 +1247,62 @@ private struct SafetyNetSheet: View {
     }
 }
 
+private struct SafetyNetTemplate: Identifiable {
+    let id = UUID()
+    let title: String
+    let guidance: String
+    let kind: FieldGuideItemKind
+
+    static let defaults: [SafetyNetTemplate] = [
+        SafetyNetTemplate(title: "Wide establishing frame", guidance: "Capture a clean wide view that proves where this stop is.", kind: .shot),
+        SafetyNetTemplate(title: "Human-scale detail", guidance: "Capture a close detail with texture, hands, signage, food, or movement.", kind: .shot),
+        SafetyNetTemplate(title: "Natural sound bed", guidance: "Record 10-20 seconds of clean ambient sound.", kind: .sound),
+        SafetyNetTemplate(title: "Voice note reaction", guidance: "Record the plain-language reason this stop matters in the story.", kind: .voice),
+        SafetyNetTemplate(title: "Exit transition", guidance: "Capture a leaving shot that can bridge to the next stop.", kind: .transition)
+    ]
+}
+
+private struct FieldActionBar: View {
+    let nextItemTitle: String?
+    let remainingCount: Int
+    let isHighContrast: Bool
+    let captureNext: () -> Void
+    let finishAction: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: captureNext) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(remainingCount == 0 ? "All items resolved" : "Capture Next")
+                        .font(.subheadline.weight(.semibold))
+                    Text(nextItemTitle ?? "Ready to complete")
+                        .font(.caption)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.glassProminent)
+
+            Button(action: finishAction) {
+                Image(systemName: "checkmark.seal")
+                    .font(.headline)
+                    .frame(width: 48, height: 44)
+            }
+            .buttonStyle(.glass)
+            .accessibilityLabel("Complete trip")
+        }
+        .tint(isHighContrast ? .white : ArcPalette.tint)
+    }
+}
+
 private struct FieldNoteEditorSheet: View {
-    let item: ShootPlanItem
+    let item: CaptureItem
     let onSave: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var note: String
 
-    init(item: ShootPlanItem, onSave: @escaping () -> Void) {
+    init(item: CaptureItem, onSave: @escaping () -> Void) {
         self.item = item
         self.onSave = onSave
         _note = State(initialValue: item.fieldNote)
@@ -1238,7 +1313,7 @@ private struct FieldNoteEditorSheet: View {
             Form {
                 Section(item.title) {
                     TextField("Field note", text: $note, axis: .vertical)
-                        .lineLimit(5, reservesSpace: true)
+                        .lineLimit(5...10)
                 }
             }
             .navigationTitle("Field Note")
@@ -1252,7 +1327,7 @@ private struct FieldNoteEditorSheet: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
-                        item.fieldNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                        item.fieldNote = note
                         onSave()
                         dismiss()
                     }
@@ -1267,17 +1342,17 @@ struct FieldProgressBar: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let clampedProgress = min(max(progress, 0), 1)
-
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.primary.opacity(0.10))
+                    .fill(.quaternary)
 
                 Capsule()
                     .fill(ArcPalette.tint)
-                    .frame(width: proxy.size.width * clampedProgress)
+                    .frame(width: proxy.size.width * min(max(progress, 0), 1))
             }
         }
-        .frame(height: 12)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Progress")
+        .accessibilityValue(progress.formatted(.percent.precision(.fractionLength(0))))
     }
 }

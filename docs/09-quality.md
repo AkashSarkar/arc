@@ -2,11 +2,11 @@
 
 > **Agent Brief** — Status: Current | Applies to: All phases (thresholds ratchet per phase) | Owner doc for: test target, parsing eval harness, per-layer test policy, manual golden path, Foundation Models tier evaluation
 > Read [docs/00-index.md](00-index.md) first. Behavioral rules: /AGENTS.md (wins on conduct). Current build phase: see [docs/08-roadmap.md](08-roadmap.md).
-> Code pointers verified against ux-redesign @ abce4bc + uncommitted field-guide work (2026-07-06). Re-verify line numbers before editing.
+> Code pointers verified against `task-owner-mvp-through-p4` after schema-v2 mapper tests (2026-07-07). Re-verify line numbers before editing.
 
 ## 1. Test target setup: `ArcTests`
 
-There is **no test target today**. Creating one is a **P0 Stabilize work item** (see [docs/08-roadmap.md](08-roadmap.md)).
+`ArcTests` exists and is part of the `Arc` scheme. It currently covers document codec behavior, AFP parser behavior, the import corpus, and schema-v2 document mapper/export round-trips.
 
 | Decision | Value |
 |---|---|
@@ -15,7 +15,7 @@ There is **no test target today**. Creating one is a **P0 Stabilize work item** 
 | UI test target | **None initially.** Do not create `ArcUITests`. SwiftUI views are covered by the manual golden path (section 5). |
 | Network | Tests MUST run fully offline. No live HTTP, no API keys, no Keychain reads. Anything network-shaped goes through a protocol fake (section 4). |
 | Data | Use in-memory `ModelContainer` for any SwiftData test. Never touch the app's store. |
-| Run command | `xcodebuild test -scheme Arc -project Arc.xcodeproj -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/ArcDerivedData` |
+| Run command | `xcodebuild test -scheme Arc -project Arc.xcodeproj -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath /tmp/ArcDerivedData` |
 
 Rules for agents:
 
@@ -73,7 +73,7 @@ Thresholds only move up. **Corpus green is a merge requirement** — it is the c
 |---|---|
 | P0 Stabilize | Lock in **existing** parser behavior (`ImportedPlanParser.swift`): write sidecars that encode what the current parser produces on the initial corpus. No regressions from that baseline. Do not chase improvements in P0. |
 | P1 Import pipeline v2 | Day/stop detection targets met on the full corpus. `chatgpt-template` class parses **100% on T0 alone** (no AI tier). Geo anchors extracted **verbatim** — byte-for-byte match against source lines. |
-| P2+ Schema v2 | Add document → storage mapper round-trip tests: `ArcPlanDocument` → schema v2 entities → `ArcPlanDocument` must be lossless for every corpus fixture (see [ADR-0004](adr/ADR-0004-arcguide-document-interchange.md) and [docs/05-data-model.md](05-data-model.md)). |
+| P2+ Schema v2 | Add document → storage mapper round-trip tests: `ArcPlanDocument` → schema v2 entities → `ArcPlanDocument` / `ArcGuideDocument` export must preserve structure for corpus-shaped fixtures (see [ADR-0004](adr/ADR-0004-arcguide-document-interchange.md) and [docs/05-data-model.md](05-data-model.md)). Initial mapper/export coverage lives in `TripDocumentMapperTests`. |
 
 If a new fixture drops a class below its phase threshold, that is a real parser gap — fix the parser or explicitly annotate the fixture as a known limitation with a linked roadmap item. Never delete a fixture to go green.
 
@@ -91,19 +91,21 @@ If a new fixture drops a class below its phase threshold, that is a real parser 
 
 Ported from the pre-docs README; README now links here instead of carrying its own copy. Run the full checklist after any UX or persistence change, on a physical device when field behavior is involved.
 
-1. Empty launch shows Capture Plans and a New Capture Plan CTA.
-2. New Capture Plan defaults to current GPS and still supports search and map pin.
+1. Empty launch shows Capture Plans and a New Location Plan / Import Plan CTA.
+2. New Location Plan defaults to current GPS and still supports search and map pin.
 3. Invalid custom timing blocks progress before generation.
 4. Generate fetches context and produces a reviewable draft.
-5. Start Capture Plan commits the location, plan, and shot list.
-6. Import Existing Plan accepts pasted Apple Notes text, builds editable stages locally, and can optionally improve the draft with AI. (Regression checks for the implemented P0 fixes: committed location uses the picked coordinates — `ImportPlanFlowView.swift:495-499`; edited stage goal survives commit — `:535` in the item loop at `:522-545`.)
-7. Field progress updates as items are captured or skipped.
-8. Before You Leave blocks accidental stage advancement while must-have or leaving items are unresolved.
-9. Story Safety Net adds recovery coverage to the current stage. (Regression check for the implemented P0 fix: repeated Safety Net taps add no duplicate unresolved items — dedup guard at `FieldView.swift:548-555`.)
-10. Capturing or skipping the final item shows a completion prompt and does not auto-complete.
-11. Complete Plan moves it to Completed with captured, skipped, missing, and stage-grouped export sections.
-12. Reopen moves the plan back to Active.
-13. Relaunch preserves Active and Completed state.
+5. Start Capture Plan commits a single-stop `Trip` with one day, one stop, stages, and capture items.
+6. Import Existing Plan accepts pasted Apple Notes / AFP text, builds editable stages locally, and commits an `ArcPlanDocument` directly into the `Trip` graph.
+7. Import Existing Plan accepts a `.arcguide` file, skips parsing, and creates a fresh runnable trip.
+8. Trip list shows active/completed trips with counts; a real multi-stop import shows timeline and map in field mode.
+9. Field progress updates as items are captured or skipped; capture and skip are mutually exclusive and set provenance timestamps.
+10. Before You Leave / must-get unresolved items block accidental stage advancement unless the user confirms.
+11. Story Safety Net adds recovery coverage to the stop's safety-net stage. Repeated Safety Net taps do not duplicate template items.
+12. Capturing or skipping the final item shows a completion prompt and does not auto-complete.
+13. Complete Trip moves it to Completed, generates a script artifact, and exposes markdown plus `.arcguide` share options.
+14. Reopen moves the trip back to Active.
+15. Relaunch preserves Active and Completed trip state.
 
 When a step's behavior changes by design (e.g., schema v2 replaces the commit path in P2), update this checklist in the same PR — keep all scenarios, reworded to match the new behavior.
 

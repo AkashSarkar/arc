@@ -11,41 +11,42 @@ struct ShootsView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
-    @Query(sort: \ShootLocation.createdAt, order: .reverse) private var locations: [ShootLocation]
+    @Query(sort: \Trip.createdAt, order: .reverse) private var trips: [Trip]
     @State private var selectedSegment: ShootSegment = .active
     @State private var isPresentingNewShoot = false
     @State private var isPresentingImport = false
     @State private var isPresentingSettings = false
-    @State private var selectedShoot: ShootLocation?
+    @State private var routeToCreatedTrip = false
+    @State private var createdTripID: UUID?
     @State private var pendingImportText = ""
     @State private var pendingImportDocument: ArcPlanDocument?
     @State private var importHandoffError: String?
 
-    private var activeShoots: [ShootLocation] {
-        locations.filter { $0.status == .active }
+    private var activeTrips: [Trip] {
+        trips.filter { $0.status == .active || $0.status == .planning }
     }
 
-    private var completedShoots: [ShootLocation] {
-        locations
+    private var completedTrips: [Trip] {
+        trips
             .filter { $0.status == .completed }
             .sorted {
-                ($0.plan?.completedAt ?? .distantPast) > ($1.plan?.completedAt ?? .distantPast)
+                ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast)
             }
     }
 
-    private var displayedShoots: [ShootLocation] {
+    private var displayedTrips: [Trip] {
         switch selectedSegment {
         case .active:
-            return activeShoots
+            return activeTrips
         case .completed:
-            return completedShoots
+            return completedTrips
         }
     }
 
     private var heroBadges: [ArcHeroBadge] {
         [
-            ArcHeroBadge(label: "\(activeShoots.count) active", systemImage: "checklist"),
-            ArcHeroBadge(label: "\(completedShoots.count) completed", systemImage: "checkmark.seal")
+            ArcHeroBadge(label: "\(activeTrips.count) active", systemImage: "checklist"),
+            ArcHeroBadge(label: "\(completedTrips.count) completed", systemImage: "checkmark.seal")
         ]
     }
 
@@ -66,15 +67,15 @@ struct ShootsView: View {
             Section {
                 ShootsSegmentControl(
                     selection: $selectedSegment,
-                    activeCount: activeShoots.count,
-                    completedCount: completedShoots.count
+                    activeCount: activeTrips.count,
+                    completedCount: completedTrips.count
                 )
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
 
-            if displayedShoots.isEmpty {
+            if displayedTrips.isEmpty {
                 Section {
                     emptyState
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
@@ -83,29 +84,29 @@ struct ShootsView: View {
                 }
             } else {
                 Section(selectedSegment.title) {
-                    ForEach(displayedShoots) { location in
+                    ForEach(displayedTrips) { trip in
                         switch selectedSegment {
                         case .active:
                             NavigationLink {
                                 FieldView(
-                                    location: location,
+                                    trip: trip,
                                     aiService: aiService,
                                     locationEnricher: locationEnricher,
                                     referenceImageCache: referenceImageCache,
                                     locationEditorServices: locationEditorServices
                                 )
                             } label: {
-                                ShootsActiveRow(location: location)
+                                ShootsActiveRow(trip: trip)
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
-                                    delete(location)
+                                    delete(trip)
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
 
                                 Button {
-                                    finish(location)
+                                    finish(trip)
                                 } label: {
                                     Label("Finish", systemImage: "checkmark.seal")
                                 }
@@ -113,19 +114,19 @@ struct ShootsView: View {
                             }
                         case .completed:
                             NavigationLink {
-                                CompletedShootView(location: location)
+                                CompletedShootView(trip: trip)
                             } label: {
-                                ShootsCompletedRow(location: location)
+                                ShootsCompletedRow(trip: trip)
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
-                                    delete(location)
+                                    delete(trip)
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
 
                                 Button {
-                                    reopen(location)
+                                    reopen(trip)
                                 } label: {
                                     Label("Reopen", systemImage: "arrow.counterclockwise")
                                 }
@@ -180,9 +181,8 @@ struct ShootsView: View {
                 locationEnricher: locationEnricher,
                 referenceImageCache: referenceImageCache,
                 locationEditorServices: locationEditorServices
-            ) { location in
-                selectedSegment = .active
-                selectedShoot = location
+            ) { trip in
+                openCreatedTrip(trip)
             }
         }
         .sheet(isPresented: $isPresentingImport) {
@@ -191,9 +191,8 @@ struct ShootsView: View {
                 locationEditorServices: locationEditorServices,
                 initialText: pendingImportText,
                 initialDocument: pendingImportDocument
-            ) { location in
-                selectedSegment = .active
-                selectedShoot = location
+            ) { trip in
+                openCreatedTrip(trip)
                 pendingImportText = ""
                 pendingImportDocument = nil
             }
@@ -206,14 +205,18 @@ struct ShootsView: View {
                 )
             }
         }
-        .navigationDestination(item: $selectedShoot) { location in
-            FieldView(
-                location: location,
-                aiService: aiService,
-                locationEnricher: locationEnricher,
-                referenceImageCache: referenceImageCache,
-                locationEditorServices: locationEditorServices
-            )
+        .navigationDestination(isPresented: $routeToCreatedTrip) {
+            if let trip = createdTrip {
+                FieldView(
+                    trip: trip,
+                    aiService: aiService,
+                    locationEnricher: locationEnricher,
+                    referenceImageCache: referenceImageCache,
+                    locationEditorServices: locationEditorServices
+                )
+            } else {
+                Text("Trip not found")
+            }
         }
         .task {
             consumePendingImportIfNeeded()
@@ -239,21 +242,29 @@ struct ShootsView: View {
     }
 
     private var rootSubtitle: String {
-        if let nextShoot = activeShoots.first, let plan = nextShoot.plan {
-            if let stage = plan.currentStage, plan.source == .importedText {
-                return "Next stage: \(stage.title) in \(nextShoot.name)."
+        if let nextTrip = activeTrips.first {
+            if let stage = nextTrip.currentStage, let stop = nextTrip.activeStop {
+                return "Next stage: \(stage.title) at \(stop.name)."
             }
 
-            if let nextItem = plan.orderedItems.first(where: { !$0.isResolved }) {
-                return "Next up: \(nextItem.title) at \(nextShoot.name)."
+            if let nextItem = nextTrip.allItems.first(where: { !$0.isResolved }), let stop = nextItem.stage?.stop {
+                return "Next up: \(nextItem.title) at \(stop.name)."
             }
         }
 
-        if !activeShoots.isEmpty {
-            return "Open an active capture plan and keep the field guide moving."
+        if !activeTrips.isEmpty {
+            return "Open an active trip and keep the field guide moving."
         }
 
         return "Create or import a capture plan, then work it in the field."
+    }
+
+    private var createdTrip: Trip? {
+        guard let createdTripID else {
+            return nil
+        }
+
+        return trips.first { $0.id == createdTripID }
     }
 
     @ViewBuilder
@@ -298,6 +309,8 @@ struct ShootsView: View {
                         .buttonStyle(.glassProminent)
 
                         Button {
+                            pendingImportText = ""
+                            pendingImportDocument = nil
                             isPresentingImport = true
                         } label: {
                             Label("Import Plan", systemImage: "square.and.arrow.down")
@@ -312,30 +325,35 @@ struct ShootsView: View {
                 ArcFeatureTitle(
                     systemImage: "archivebox",
                     title: "No completed plans yet",
-                    subtitle: "Completed shot lists will appear here."
+                    subtitle: "Completed field guides will appear here."
                 )
             }
         }
     }
 
-    private func finish(_ location: ShootLocation) {
-        guard let plan = location.plan else {
-            return
-        }
+    private func openCreatedTrip(_ trip: Trip) {
+        selectedSegment = .active
+        createdTripID = trip.id
+        routeToCreatedTrip = true
+    }
 
-        plan.completedAt = Date()
+    private func finish(_ trip: Trip) {
+        trip.status = .completed
+        trip.completedAt = Date()
+        _ = TripDocumentMapper.generateScriptArtifact(for: trip)
         try? modelContext.save()
         selectedSegment = .completed
     }
 
-    private func reopen(_ location: ShootLocation) {
-        location.plan?.completedAt = nil
+    private func reopen(_ trip: Trip) {
+        trip.status = .active
+        trip.completedAt = nil
         try? modelContext.save()
         selectedSegment = .active
     }
 
-    private func delete(_ location: ShootLocation) {
-        modelContext.delete(location)
+    private func delete(_ trip: Trip) {
+        modelContext.delete(trip)
         try? modelContext.save()
     }
 
@@ -454,30 +472,18 @@ private struct ShootsSegmentControl: View {
 }
 
 private struct ShootsActiveRow: View {
-    let location: ShootLocation
-
-    private var plan: ShootPlan? {
-        location.plan
-    }
+    let trip: Trip
 
     private var progressText: String {
-        guard let plan else {
-            return "0/0"
-        }
-
-        return plan.source == .importedText ? "\(plan.resolvedCount)/\(plan.items.count)" : "\(plan.capturedCount)/\(plan.items.count)"
+        "\(trip.resolvedCount)/\(trip.allItems.count)"
     }
 
     private var nextTitle: String {
-        guard let plan else {
-            return "Plan needed"
-        }
-
-        if let stage = plan.currentStage, plan.source == .importedText {
+        if let stage = trip.currentStage {
             return stage.title
         }
 
-        if let next = plan.orderedItems.first(where: { !$0.isResolved }) {
+        if let next = trip.allItems.first(where: { !$0.isResolved }) {
             return next.title
         }
 
@@ -488,7 +494,7 @@ private struct ShootsActiveRow: View {
         ArcDenseCard(accent: ArcPalette.tint) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(location.name)
+                    Text(trip.title)
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -504,21 +510,16 @@ private struct ShootsActiveRow: View {
                     .monospacedDigit()
             }
 
-            if let plan {
-                FieldProgressBar(progress: plan.source == .importedText ? plan.fieldCompletionProgress : plan.completionProgress)
-                    .frame(height: 7)
+            FieldProgressBar(progress: trip.allItems.isEmpty ? 0 : Double(trip.resolvedCount) / Double(trip.allItems.count))
+                .frame(height: 7)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up")
-                        if plan.source == .importedText {
-                            ArcStatusPill("Imported", systemImage: "square.and.arrow.down", tint: ArcPalette.glowSecondary)
-                            ArcStatusPill("\(plan.fieldStages.count) stages", systemImage: "rectangle.stack", tint: ArcPalette.glowPrimary)
-                        }
-                        ArcStatusPill(plan.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
-                        ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
-                        ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowSecondary)
-                    }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ArcStatusPill("\(trip.orderedStops.count) stops", systemImage: "map", tint: ArcPalette.glowSecondary)
+                    ArcStatusPill("\(trip.allStages.count) stages", systemImage: "rectangle.stack", tint: ArcPalette.glowPrimary)
+                    ArcStatusPill(trip.outputIntent.title, systemImage: "square.stack.3d.up")
+                    ArcStatusPill(trip.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
+                    ArcStatusPill(trip.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
                 }
             }
         }
@@ -526,17 +527,13 @@ private struct ShootsActiveRow: View {
 }
 
 private struct ShootsCompletedRow: View {
-    let location: ShootLocation
-
-    private var plan: ShootPlan? {
-        location.plan
-    }
+    let trip: Trip
 
     var body: some View {
         ArcDenseCard(accent: ArcPalette.glowSecondary) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(location.name)
+                    Text(trip.title)
                         .font(.headline)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -552,24 +549,19 @@ private struct ShootsCompletedRow: View {
                     .foregroundStyle(ArcPalette.glowSecondary)
             }
 
-            if let plan {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ArcStatusPill("\(plan.capturedCount)/\(plan.items.count)", systemImage: "checkmark.circle", tint: ArcPalette.tint)
-                        if plan.source == .importedText {
-                            ArcStatusPill("Imported", systemImage: "square.and.arrow.down", tint: ArcPalette.glowSecondary)
-                        }
-                        ArcStatusPill(plan.outputIntent.title, systemImage: "square.stack.3d.up", tint: ArcPalette.glowSecondary)
-                        ArcStatusPill(plan.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.tint)
-                        ArcStatusPill(plan.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowPrimary)
-                    }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ArcStatusPill("\(trip.capturedCount)/\(trip.allItems.count)", systemImage: "checkmark.circle", tint: ArcPalette.tint)
+                    ArcStatusPill("\(trip.skippedCount) skipped", systemImage: "forward.end", tint: ArcPalette.glowSecondary)
+                    ArcStatusPill(trip.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.tint)
+                    ArcStatusPill(trip.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowPrimary)
                 }
             }
         }
     }
 
     private var completedSummary: String {
-        guard let completedAt = plan?.completedAt else {
+        guard let completedAt = trip.completedAt else {
             return "Completed"
         }
 

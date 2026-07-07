@@ -1,16 +1,29 @@
 # 05 — Data Model
 
-> **Agent Brief** — Status: Current | Applies to: All (schema v2 lands in P2; document format lands in P1) | Owner doc for: persistence schema (v1 + v2), entity specifications, old→new mapping, store reset strategy, ArcPlanDocument/ArcGuideDocument interchange format.
+> **Agent Brief** — Status: Current | Applies to: owner-test MVP schema v2 and document interchange | Owner doc for: persistence schema, entity specifications, old→new mapping, store reset strategy, ArcPlanDocument/ArcGuideDocument interchange format.
 > Read [docs/00-index.md](00-index.md) first. Behavioral rules: /AGENTS.md (wins on conduct). Current build phase: see [docs/08-roadmap.md](08-roadmap.md).
-> Code pointers verified against ux-redesign @ abce4bc + uncommitted field-guide/docs-alignment work (2026-07-06). Re-verify line numbers before editing.
+> Code pointers verified against `task-owner-mvp-through-p4` after schema-v2 implementation (2026-07-07). Re-verify line numbers before editing.
 
 Related: [docs/04-architecture.md](04-architecture.md) (layering rules), [docs/06-import-spec.md](06-import-spec.md) (what produces documents), [docs/07-field-ux.md](07-field-ux.md) (what consumes stages), [docs/adr/ADR-0002-schema-v2-rebuild.md](adr/ADR-0002-schema-v2-rebuild.md), [docs/adr/ADR-0003-store-reset-pre-ship.md](adr/ADR-0003-store-reset-pre-ship.md), [docs/adr/ADR-0004-arcguide-document-interchange.md](adr/ADR-0004-arcguide-document-interchange.md).
 
 ---
 
-## 1. Current model (schema v1)
+## 0. Current implementation snapshot
 
-Three `@Model` classes plus value-type draft structs. All plans are reachable only through their `ShootLocation` — there is no trip-level container.
+Schema v2 is now the app's active SwiftData model on the owner-test MVP branch:
+
+- Active models live in [Arc/Features/Trips/Domain/TripModels.swift](../Arc/Features/Trips/Domain/TripModels.swift): `Trip`, `TripArtifact`, `ShootDay`, `Stop`, `Stage`, and `CaptureItem`.
+- The app model container is wired to those schema-v2 entities in [Arc/App/ArcApp.swift](../Arc/App/ArcApp.swift).
+- Import and `.arcguide` documents map through [Arc/Features/Trips/Domain/TripDocumentMapper.swift](../Arc/Features/Trips/Domain/TripDocumentMapper.swift).
+- The retired v1 root types `ShootLocation`, `ShootPlan`, `ShootPlanItem`, and `PlanViewModel` are deleted.
+- Coordinates are optional on `Stop`; unresolved imported stops keep `sourceGeoAnchor` and render as needing location instead of fabricating `0,0`.
+- Completed trips generate a `TripArtifact(kind: script)` and can export a structured `ArcGuideDocument`.
+
+The v1 notes below are historical context for old→new mapping only.
+
+## 1. Retired model (schema v1, historical)
+
+The previous build used three `@Model` classes plus value-type draft structs. All plans were reachable only through their `ShootLocation`; there was no trip-level container. These files no longer exist on the owner-test MVP branch.
 
 ### 1.1 `ShootPlan` — [Arc/Features/Planning/Domain/ShootPlan.swift:4](../Arc/Features/Planning/Domain/ShootPlan.swift)
 
@@ -118,7 +131,7 @@ These are design consequences of v1. P0 patches the two user-visible data proble
 
 ## 3. Schema v2 entity specifications
 
-All entities live in `Arc/Features/Trips/Domain/`. Follow existing conventions: `@Model` classes, `@Attribute(.unique) var id: UUID`, raw-value `String` enum storage (`xxxRawValue: String` + computed typed accessor with a safe default), cascade delete downward, optional inverse pointer upward. Hierarchy:
+All entities live in `Arc/Features/Trips/Domain/` and are implemented. Follow existing conventions: `@Model` classes, `@Attribute(.unique) var id: UUID`, raw-value `String` enum storage (`xxxRawValue: String` + computed typed accessor with a safe default), cascade delete downward, optional inverse pointer upward. Hierarchy:
 
 ```
 Trip ─┬─ cascade → [TripArtifact]

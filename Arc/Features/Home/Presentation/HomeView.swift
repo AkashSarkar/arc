@@ -64,7 +64,7 @@ struct HomeView: View {
         referenceImageCache: PreviewReferenceImageCache(),
         locationEditorServices: .live
     )
-    .modelContainer(for: [ShootLocation.self, ShootPlan.self, ShootPlanItem.self, LLMProfile.self], inMemory: true)
+    .modelContainer(for: [Trip.self, TripArtifact.self, ShootDay.self, Stop.self, Stage.self, CaptureItem.self, LLMProfile.self], inMemory: true)
 }
 
 private struct PreviewAIService: AIServicing {
@@ -86,12 +86,12 @@ private struct PreviewAPIKeyStore: APIKeyProviding {
 }
 
 private struct PreviewLocationEnricher: LocationEnriching {
-    func enrich(location: ShootLocation, shootWindow: DateInterval?) async -> LocationContextBundle {
+    func enrich(location: Stop, shootWindow: DateInterval?) async -> LocationContextBundle {
         let start = shootWindow?.start ?? Date()
         let end = shootWindow?.end ?? start.addingTimeInterval(2 * 3600)
         return LocationContextBundle(
             generatedAt: Date(),
-            location: .init(name: location.name, latitude: location.latitude, longitude: location.longitude),
+            location: .init(name: location.name, latitude: location.latitude ?? 0, longitude: location.longitude ?? 0),
             shootWindow: .init(start: start, end: end, label: "Preview window"),
             highlights: ["Preview enrichment context."],
             providerStatuses: .init(
@@ -125,11 +125,11 @@ private struct PreviewLocationEnricher: LocationEnriching {
     }
 }
 private struct PreviewReferenceImageCache: ReferenceImageCaching {
-    func cacheReferenceImages(for location: ShootLocation) async -> ReferenceImageCacheResult {
+    func cacheReferenceImages(for location: Stop) async -> ReferenceImageCacheResult {
         ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
     }
 
-    func cacheStatus(for location: ShootLocation) -> ReferenceImageCacheResult {
+    func cacheStatus(for location: Stop) -> ReferenceImageCacheResult {
         ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
     }
 }

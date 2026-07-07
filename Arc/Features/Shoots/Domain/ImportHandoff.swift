@@ -60,7 +60,7 @@ nonisolated enum ImportHandoff {
             }
         }
 
-        return try ArcDocumentCodec.decodePlan(from: Data(contentsOf: url))
+        return try ArcDocumentCodec.decodePlanOrGuide(from: Data(contentsOf: url))
     }
 
     private static func readPDFText(from url: URL) throws -> String {

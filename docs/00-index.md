@@ -2,7 +2,7 @@
 
 > **Agent Brief** — Status: Current | Applies to: All phases | Owner doc for: doc set structure, precedence, Agent Brief spec, glossary
 > Read this doc first. Behavioral rules: /AGENTS.md (wins on conduct). Current build phase: see [docs/08-roadmap.md](08-roadmap.md).
-> Code pointers verified against ux-redesign @ abce4bc + uncommitted field-guide/docs-alignment work (2026-07-06). Re-verify line numbers before editing.
+> Code pointers verified against `task-owner-mvp-through-p4` after owner-test MVP implementation (2026-07-07). Re-verify line numbers before editing.
 
 ## 1. Purpose
 
@@ -18,13 +18,13 @@ Use this table to avoid confusing the current prototype with the target architec
 
 | Area | Current implementation | Target state | Roadmap owner |
 |---|---|---|---|
-| Root object | `ShootLocation` owns one optional `ShootPlan`; imported plans currently ride through this shape. | `Trip` owns artifacts, days, stops, stages, and capture items. | P2 in [08-roadmap.md](08-roadmap.md) |
-| Import | Paste text into `ImportPlanFlowView`; heuristic draft + optional cloud cleanup; stages flatten into `ShootPlanItem`s. | T0/T1/T2 pipeline emits `ArcPlanDocument`; share/open/App Intent ingestion; geo anchors preserved. | P1 in [08-roadmap.md](08-roadmap.md) |
-| Stage storage | Stage identity is denormalized on items as `stageTitle` + `stageOrderIndex`; stage goal is currently dropped at commit. | `Stage` is a persisted entity with `goal`, `kind`, and stable identity. | P0 stopgap, P2 structural fix |
-| Imported location | Current uncommitted import code forges `0,0` coordinates. | P0 requires a picked real location; P2 allows stops with unresolved optional coordinates and source geo anchors. | P0 stopgap, P2 structural fix |
-| Field UX | Stage-by-stage checklist with capture/skip/note/photo, before-leave gate, high contrast, and hardcoded Safety Net items. | Glanceable stage mantra, story-is-safe state, structured Safety Net stage, golden-hour nudge, optional while-in-use surfacing. | P0, then P3 after G1 |
-| Review/export | Completed summary + plain text `ShareLink`. | Script artifact generated from execution data; `.arcguide` guide export and web preview after channel gates. | P3/P4 |
-| Tests | No test target today. | `ArcTests` with parser corpus, document codec tests, mapper tests, and offline fakes. | P0 onward |
+| Root object | `Trip` owns artifacts, days, stops, stages, and capture items. | Same, with sync/platform work only after gates. | P2/P5 in [08-roadmap.md](08-roadmap.md) |
+| Import | Paste/share/open/App Intent feed an `ArcPlanDocument`; `.arcguide` files skip parsing and commit into a fresh `Trip`. | T1/T2 quality continues to improve, but T0 remains the guaranteed floor. | P1/P2 in [08-roadmap.md](08-roadmap.md) |
+| Stage storage | `Stage` is a persisted entity with `goal`, `kind`, and stable identity. | Same, plus optional location surfacing and Live Activity state after G1. | P2/P3 |
+| Imported location | `Stop.latitude` / `Stop.longitude` are optional; unresolved stops keep verbatim `sourceGeoAnchor`. | Resolution UX improves, never fabricated coordinates. | P2 |
+| Field UX | Trip timeline, map, stage mantra, capture/skip/note/photo, high contrast, structured Safety Net stage, and completion prompt. | Stricter glanceable no-scroll field surface, golden-hour nudge, optional while-in-use surfacing. | P3 after G1 |
+| Review/export | Completion generates a script artifact; completed screen shares markdown and `.arcguide`. | Off-app web preview and email capture after G2. | P3/P4 |
+| Tests | `ArcTests` covers document codec, parser, corpus fixtures, and schema-v2 mapper/export round-trip. | Corpus grows with every real trip. | P0 onward |
 
 ## 3. Precedence
 
@@ -59,7 +59,7 @@ Every doc in `docs/` (ADRs excluded) starts with this blockquote, adapted per do
 ```markdown
 > **Agent Brief** — Status: Current | Applies to: <phases or All> | Owner doc for: <topic>
 > Read [docs/00-index.md](00-index.md) first. Behavioral rules: /AGENTS.md (wins on conduct). Current build phase: see [docs/08-roadmap.md](08-roadmap.md).
-> Code pointers verified against ux-redesign @ abce4bc + uncommitted field-guide/docs-alignment work (2026-07-06). Re-verify line numbers before editing.
+> Code pointers verified against <branch @ commit or branch name> (<YYYY-MM-DD>). Re-verify line numbers before editing.
 ```
 
 Status values:

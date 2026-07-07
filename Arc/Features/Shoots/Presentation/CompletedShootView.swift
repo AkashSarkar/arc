@@ -3,35 +3,25 @@ import SwiftUI
 import UIKit
 
 struct CompletedShootView: View {
-    let location: ShootLocation
+    let trip: Trip
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @State private var isConfirmingDelete = false
     @State private var selectedSection: CompletedShootSection = .captured
+    @State private var guideFileURL: URL?
+    @State private var exportError: String?
 
-    private var plan: ShootPlan? {
-        location.plan
+    private var capturedItems: [CaptureItem] {
+        trip.allItems.filter(\.isCaptured)
     }
 
-    private var planItems: [ShootPlanItem] {
-        plan?.orderedItems ?? []
+    private var skippedItems: [CaptureItem] {
+        trip.allItems.filter(\.isSkipped)
     }
 
-    private var capturedItems: [ShootPlanItem] {
-        planItems.filter(\.isCaptured)
-    }
-
-    private var skippedItems: [ShootPlanItem] {
-        planItems.filter(\.isSkipped)
-    }
-
-    private var missingItems: [ShootPlanItem] {
-        planItems.filter { !$0.isResolved }
-    }
-
-    private var fieldStages: [FieldGuideStage] {
-        plan?.fieldStages ?? []
+    private var missingItems: [CaptureItem] {
+        trip.allItems.filter { !$0.isResolved }
     }
 
     var body: some View {
@@ -39,7 +29,7 @@ struct CompletedShootView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ArcCompactHeroHeader(
                     systemImage: "checkmark.seal.fill",
-                    title: location.name,
+                    title: trip.title,
                     summary: completedSummary,
                     tint: ArcPalette.tint
                 )
@@ -48,29 +38,44 @@ struct CompletedShootView: View {
                     ArcFeatureTitle(
                         systemImage: "chart.bar.xaxis",
                         title: "Coverage Snapshot",
-                        subtitle: nil,
+                        subtitle: trip.isStorySafe ? "Must-get coverage is complete." : "\(trip.resolvedMustCount)/\(trip.mustCount) must-get items resolved.",
                         accent: ArcPalette.glowSecondary
                     )
 
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 10) {
-                            ArcMetricTile(title: "Planned", value: "\(planItems.count)", systemImage: "checklist", accent: ArcPalette.glowSecondary)
-                            ArcMetricTile(title: "Captured", value: "\(plan?.capturedCount ?? 0)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
-                            ArcMetricTile(title: "Skipped", value: "\(plan?.skippedCount ?? 0)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
-                            ArcMetricTile(title: "Missing", value: "\(plan?.missingCount ?? 0)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
+                            ArcMetricTile(title: "Planned", value: "\(trip.allItems.count)", systemImage: "checklist", accent: ArcPalette.glowSecondary)
+                            ArcMetricTile(title: "Captured", value: "\(trip.capturedCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
+                            ArcMetricTile(title: "Skipped", value: "\(trip.skippedCount)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
+                            ArcMetricTile(title: "Missing", value: "\(trip.missingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
                         }
 
                         VStack(spacing: 10) {
-                            ArcMetricTile(title: "Planned", value: "\(planItems.count)", systemImage: "checklist", accent: ArcPalette.glowSecondary)
-                            ArcMetricTile(title: "Captured", value: "\(plan?.capturedCount ?? 0)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
-                            ArcMetricTile(title: "Skipped", value: "\(plan?.skippedCount ?? 0)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
-                            ArcMetricTile(title: "Missing", value: "\(plan?.missingCount ?? 0)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
+                            ArcMetricTile(title: "Planned", value: "\(trip.allItems.count)", systemImage: "checklist", accent: ArcPalette.glowSecondary)
+                            ArcMetricTile(title: "Captured", value: "\(trip.capturedCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
+                            ArcMetricTile(title: "Skipped", value: "\(trip.skippedCount)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
+                            ArcMetricTile(title: "Missing", value: "\(trip.missingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
                         }
                     }
                 }
 
-                if let plan, plan.source == .importedText {
-                    StoryCompletenessCard(plan: plan, items: planItems)
+                StoryCompletenessCard(trip: trip)
+
+                if let script = trip.artifacts.first(where: { $0.kind == .script }),
+                   !script.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ArcFeatureCard(accent: ArcPalette.tint) {
+                        ArcFeatureTitle(
+                            systemImage: "text.quote",
+                            title: "Editing Script",
+                            subtitle: "Generated from resolved field work.",
+                            accent: ArcPalette.tint
+                        )
+
+                        Text(script.body)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Picker("Completed section", selection: $selectedSection) {
@@ -110,10 +115,17 @@ struct CompletedShootView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                ShareLink(item: completedExportText) {
+                ShareLink(item: TripDocumentMapper.markdownExport(for: trip)) {
                     Image(systemName: "square.and.arrow.up")
                 }
                 .accessibilityLabel("Share summary")
+
+                if let guideFileURL {
+                    ShareLink(item: guideFileURL) {
+                        Image(systemName: "doc.badge.arrow.up")
+                    }
+                    .accessibilityLabel("Share Arc guide")
+                }
 
                 Button {
                     reopen()
@@ -130,18 +142,31 @@ struct CompletedShootView: View {
                 .accessibilityLabel("Delete plan")
             }
         }
-        .confirmationDialog("Delete this plan?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
-            Button("Delete Plan", role: .destructive) {
-                deleteShoot()
+        .confirmationDialog("Delete this trip?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("Delete Trip", role: .destructive) {
+                deleteTrip()
             }
             Button("Cancel", role: .cancel) {
             }
         } message: {
-            Text("This removes the location, capture plan, and shot list.")
+            Text("This removes the trip, stops, field guide, and export artifacts.")
+        }
+        .alert("Could Not Export Guide", isPresented: Binding(
+            get: { exportError != nil },
+            set: { if !$0 { exportError = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                exportError = nil
+            }
+        } message: {
+            Text(exportError ?? "")
+        }
+        .onAppear {
+            prepareGuideExport()
         }
     }
 
-    private var selectedItems: [ShootPlanItem] {
+    private var selectedItems: [CaptureItem] {
         switch selectedSection {
         case .captured:
             return capturedItems
@@ -153,108 +178,52 @@ struct CompletedShootView: View {
     }
 
     private var completedSummary: String {
-        guard let plan else {
-            return "Completed"
+        if let completedAt = trip.completedAt {
+            return "\(trip.resolvedCount)/\(trip.allItems.count) resolved - \(completedAt.formatted(date: .abbreviated, time: .shortened))"
         }
 
-        if let completedAt = plan.completedAt {
-            return "\(plan.resolvedCount)/\(planItems.count) resolved • \(completedAt.formatted(date: .abbreviated, time: .shortened))"
-        }
-
-        return "\(plan.resolvedCount)/\(planItems.count) resolved"
+        return "\(trip.resolvedCount)/\(trip.allItems.count) resolved"
     }
 
-    private var completedExportText: String {
-        guard let plan else {
-            return "\(location.name)\nCompleted Capture Plan"
+    private func prepareGuideExport() {
+        do {
+            _ = TripDocumentMapper.generateScriptArtifact(for: trip)
+            let document = TripDocumentMapper.planDocument(from: trip, kind: .guide)
+            let data = try ArcDocumentCodec.encode(document)
+            let filename = "\(safeFilename(trip.title)).arcguide"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            try data.write(to: url, options: [.atomic])
+            guideFileURL = url
+            try modelContext.save()
+        } catch {
+            exportError = error.localizedDescription
         }
-
-        var sections: [String] = []
-        sections.append("Arc Capture Plan")
-        sections.append(location.name)
-        sections.append("Content: \(plan.outputIntent.title)")
-        sections.append("Capture: \(plan.captureMedium.title)")
-        sections.append("Platform: \(plan.targetPlatform.title)")
-        sections.append("Style: \(plan.stylePreset.title)")
-        sections.append("Timing: \(plan.shootWindowSummary)")
-
-        if let completedAt = plan.completedAt {
-            sections.append("Completed: \(completedAt.formatted(date: .abbreviated, time: .shortened))")
-        }
-
-        sections.append("Coverage: \(plan.capturedCount) captured, \(plan.skippedCount) skipped, \(plan.missingCount) missing")
-
-        if !fieldStages.isEmpty {
-            sections.append(
-                (["Editing Outline"] + fieldStages.map(stageExportBlock))
-                    .joined(separator: "\n\n")
-            )
-        } else if !planItems.isEmpty {
-            sections.append(
-                (["Items"] + planItems.map(itemExportLine))
-                    .joined(separator: "\n")
-            )
-        }
-
-        let noteLines = planItems
-            .filter { !$0.fieldNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .map { "- \($0.title): \($0.fieldNote)" }
-        if !noteLines.isEmpty {
-            sections.append((["Field Notes"] + noteLines).joined(separator: "\n"))
-        }
-
-        return sections.joined(separator: "\n\n")
-    }
-
-    private func stageExportBlock(_ stage: FieldGuideStage) -> String {
-        var lines = ["\(stage.title)"]
-
-        let captured = stage.items.filter(\.isCaptured)
-        if !captured.isEmpty {
-            lines.append("Captured")
-            lines.append(contentsOf: captured.map(itemExportLine))
-        }
-
-        let skipped = stage.items.filter(\.isSkipped)
-        if !skipped.isEmpty {
-            lines.append("Skipped")
-            lines.append(contentsOf: skipped.map(itemExportLine))
-        }
-
-        let missing = stage.items.filter { !$0.isResolved }
-        if !missing.isEmpty {
-            lines.append("Missing")
-            lines.append(contentsOf: missing.map(itemExportLine))
-        }
-
-        return lines.joined(separator: "\n")
-    }
-
-    private func itemExportLine(_ item: ShootPlanItem) -> String {
-        var line = "- \(item.title) (\(item.displayRoleTitle), \(item.priority.title)): \(item.guidance)"
-        let note = item.fieldNote.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !note.isEmpty {
-            line += " Note: \(note)"
-        }
-        return line
     }
 
     private func reopen() {
-        location.plan?.completedAt = nil
+        trip.status = .active
+        trip.completedAt = nil
         try? modelContext.save()
         dismiss()
     }
 
-    private func deleteShoot() {
-        modelContext.delete(location)
+    private func deleteTrip() {
+        modelContext.delete(trip)
         try? modelContext.save()
         dismiss()
+    }
+
+    private func safeFilename(_ title: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_ "))
+        let scalars = title.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        let cleaned = String(scalars).trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Arc Guide" : cleaned
     }
 }
 
 private struct CompletedShotRow: View {
     let systemImage: String
-    let item: ShootPlanItem
+    let item: CaptureItem
     let tint: Color
 
     private var thumbnailImage: UIImage? {
@@ -300,11 +269,10 @@ private struct CompletedShotRow: View {
 }
 
 private struct StoryCompletenessCard: View {
-    let plan: ShootPlan
-    let items: [ShootPlanItem]
+    let trip: Trip
 
-    private var capturedItems: [ShootPlanItem] {
-        items.filter(\.isCaptured)
+    private var capturedItems: [CaptureItem] {
+        trip.allItems.filter(\.isCaptured)
     }
 
     var body: some View {
@@ -312,7 +280,7 @@ private struct StoryCompletenessCard: View {
             ArcFeatureTitle(
                 systemImage: "film.stack",
                 title: "Story Completeness",
-                subtitle: plan.storySummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : plan.storySummary,
+                subtitle: trip.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : trip.summary,
                 accent: ArcPalette.tint
             )
 
@@ -346,7 +314,7 @@ private struct StoryCompletenessCard: View {
 
     private var hasBeginning: Bool {
         capturedItems.contains { item in
-            item.stageOrderIndex == 0
+            item.stage?.orderIndex == 0
                 || item.title.localizedCaseInsensitiveContains("begin")
                 || item.title.localizedCaseInsensitiveContains("start")
                 || item.title.localizedCaseInsensitiveContains("establish")
@@ -354,7 +322,7 @@ private struct StoryCompletenessCard: View {
     }
 
     private var hasMiddle: Bool {
-        capturedItems.count >= max(2, items.count / 3)
+        capturedItems.count >= max(2, trip.allItems.count / 3)
     }
 
     private var hasEnding: Bool {
@@ -455,11 +423,11 @@ private enum CompletedShootSection: String, CaseIterable, Identifiable {
     var emptyMessage: String {
         switch self {
         case .captured:
-            return "Reopen this plan to continue field work."
+            return "Reopen this trip to continue field work."
         case .skipped:
             return "Skipped items will appear here."
         case .missing:
-            return "Everything planned was captured."
+            return "Everything planned was resolved."
         }
     }
 }

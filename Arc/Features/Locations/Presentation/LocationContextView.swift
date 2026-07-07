@@ -2,12 +2,12 @@ import SwiftData
 import SwiftUI
 
 struct LocationContextView: View {
-    let location: ShootLocation
+    let location: Stop
 
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: LocationContextViewModel
 
-    init(location: ShootLocation, locationEnricher: any LocationEnriching) {
+    init(location: Stop, locationEnricher: any LocationEnriching) {
         self.location = location
         _viewModel = State(initialValue: LocationContextViewModel(location: location, locationEnricher: locationEnricher))
     }

@@ -17,6 +17,6 @@ struct ArcApp: App {
             )
             .tint(ArcPalette.tint)
         }
-        .modelContainer(for: [ShootLocation.self, ShootPlan.self, ShootPlanItem.self, LLMProfile.self])
+        .modelContainer(for: [Trip.self, TripArtifact.self, ShootDay.self, Stop.self, Stage.self, CaptureItem.self, LLMProfile.self])
     }
 }

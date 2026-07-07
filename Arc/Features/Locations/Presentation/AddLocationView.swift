@@ -8,7 +8,7 @@ struct LocationEditorView: View {
     private let onSave: (LocationDraftValue) throws -> Void
 
     init(
-        location: ShootLocation? = nil,
+        location: Stop? = nil,
         services: LocationEditorServiceFactory,
         onSave: @escaping (LocationDraftValue) throws -> Void
     ) {

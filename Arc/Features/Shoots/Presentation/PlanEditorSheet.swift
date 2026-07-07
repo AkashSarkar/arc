@@ -2,50 +2,24 @@ import SwiftData
 import SwiftUI
 
 struct PlanEditorSheet: View {
-    let location: ShootLocation
-    let aiService: any AIServicing
-    let locationEnricher: any LocationEnriching
-    let referenceImageCache: any ReferenceImageCaching
+    let trip: Trip
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @State private var viewModel: PlanViewModel
     @State private var selectedSection: PlanEditorSection = .checklist
-    @State private var isRefreshingContext = false
-    @State private var contextRefreshError: String?
-    @State private var editingItem: ShootPlanItem?
-    @State private var pendingRegenerationDrafts: [ShootDraftItem] = []
-    @State private var pendingRegenerationRawResponse = ""
-    @State private var isApplyingRegeneration = false
-    @State private var editTitle = ""
-    @State private var editRole = ""
-    @State private var editGuidance = ""
+    @State private var editingItem: CaptureItem?
+    @State private var title: String
+    @State private var summary: String
 
     init(
-        location: ShootLocation,
+        trip: Trip,
         aiService: any AIServicing,
         locationEnricher: any LocationEnriching,
         referenceImageCache: any ReferenceImageCaching
     ) {
-        self.location = location
-        self.aiService = aiService
-        self.locationEnricher = locationEnricher
-        self.referenceImageCache = referenceImageCache
-        _viewModel = State(
-            initialValue: PlanViewModel(
-                aiService: aiService,
-                existingPlan: location.plan,
-                referenceImageCache: referenceImageCache
-            )
-        )
-    }
-
-    private var planItems: [ShootPlanItem] {
-        location.plan?.orderedItems ?? []
-    }
-
-    private var visibleSections: [PlanEditorSection] {
-        location.plan?.source == .importedText ? [.checklist] : PlanEditorSection.allCases
+        self.trip = trip
+        _title = State(initialValue: trip.title)
+        _summary = State(initialValue: trip.summary)
     }
 
     var body: some View {
@@ -55,7 +29,7 @@ struct PlanEditorSheet: View {
                     ArcCompactHeroHeader(
                         systemImage: "slider.horizontal.3",
                         title: "Edit Capture Plan",
-                        summary: location.name
+                        summary: trip.title
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .listRowBackground(Color.clear)
@@ -64,7 +38,7 @@ struct PlanEditorSheet: View {
 
                 Section {
                     Picker("Plan section", selection: $selectedSection) {
-                        ForEach(visibleSections) { section in
+                        ForEach(PlanEditorSection.allCases) { section in
                             Text(section.title).tag(section)
                         }
                     }
@@ -75,73 +49,24 @@ struct PlanEditorSheet: View {
                 }
 
                 currentPlanSection
-
-                if let errorMessage = viewModel.errorMessage {
-                    Section {
-                        ArcFeatureCard(accent: .red) {
-                            Text(errorMessage)
-                                .font(.subheadline)
-                                .foregroundStyle(.red)
-                        }
-                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                    }
-                }
-
             }
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
             .background(ArcSceneBackground())
             .navigationTitle("Capture Plan")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                if !visibleSections.contains(selectedSection) {
-                    selectedSection = .checklist
-                }
-            }
-            .onChange(of: viewModel.shootStartTime) { _, _ in
-                viewModel.ensureDefaultWindowTimes()
-                clearPendingRegeneration()
-            }
-            .onChange(of: viewModel.shootEndTime) { _, _ in
-                clearPendingRegeneration()
-            }
-            .onChange(of: viewModel.shootDate) { _, _ in
-                clearPendingRegeneration()
-            }
-            .onChange(of: viewModel.shootWindowMode) { _, _ in
-                clearPendingRegeneration()
-            }
-            .onChange(of: viewModel.outputIntent) { _, _ in
-                viewModel.applyOutputDefaults()
-                clearPendingRegeneration()
-            }
-            .onChange(of: viewModel.captureMedium) { _, _ in
-                clearPendingRegeneration()
-            }
-            .onChange(of: viewModel.targetPlatform) { _, _ in
-                clearPendingRegeneration()
-            }
-            .onChange(of: viewModel.stylePreset) { _, _ in
-                clearPendingRegeneration()
-            }
-            .onChange(of: viewModel.notes) { _, _ in
-                clearPendingRegeneration()
-            }
-            .task(id: location.enrichmentJSON) {
-                viewModel.refreshReferenceCacheStatus(for: location)
-            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
-                        saveExistingPlanMetadata()
+                        saveMetadata()
                         dismiss()
                     }
                 }
             }
-            .sheet(item: $editingItem) { _ in
-                editItemSheet
+            .sheet(item: $editingItem) { item in
+                CaptureItemEditSheet(item: item) {
+                    try? modelContext.save()
+                }
             }
         }
     }
@@ -151,10 +76,33 @@ struct PlanEditorSheet: View {
         switch selectedSection {
         case .checklist:
             checklistSection
-        case .regenerate:
-            regenerateSection
-        case .context:
-            contextSection
+        case .trip:
+            tripSection
+        case .exports:
+            exportSection
+        }
+    }
+
+    private var tripSection: some View {
+        Section {
+            ArcFeatureCard(accent: ArcPalette.tint) {
+                ArcFeatureTitle(
+                    systemImage: "text.cursor",
+                    title: "Trip Details",
+                    subtitle: "These values are included in exports.",
+                    accent: ArcPalette.tint
+                )
+
+                TextField("Trip title", text: $title)
+                    .textFieldStyle(.roundedBorder)
+
+                TextField("Summary", text: $summary, axis: .vertical)
+                    .lineLimit(3...7)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
     }
 
@@ -163,21 +111,19 @@ struct PlanEditorSheet: View {
             ArcFeatureCard(accent: ArcPalette.glowPrimary) {
                 ArcFeatureTitle(
                     systemImage: "checklist",
-                    title: "Shot List",
-                    subtitle: planItems.isEmpty ? "No items are saved yet." : "\(planItems.count) live items",
+                    title: "Field Guide",
+                    subtitle: trip.allItems.isEmpty ? "No items are saved yet." : "\(trip.allItems.count) live items",
                     accent: ArcPalette.glowPrimary
                 )
 
-                if planItems.isEmpty {
-                    Text("Regenerate the plan to create a field-ready shot list.")
+                if trip.orderedStops.isEmpty {
+                    Text("Add or import stops to create a field guide.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
-                    ShootPlanItemList(
-                        items: planItems,
-                        onEdit: beginEditing,
-                        onDelete: deleteItem
-                    )
+                    ForEach(trip.orderedStops) { stop in
+                        stopEditor(stop)
+                    }
                 }
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -186,378 +132,209 @@ struct PlanEditorSheet: View {
         }
     }
 
-    private var regenerateSection: some View {
+    private var exportSection: some View {
         Section {
-            ArcFeatureCard(accent: ArcPalette.tint) {
+            ArcFeatureCard(accent: ArcPalette.glowSecondary) {
                 ArcFeatureTitle(
-                    systemImage: "sparkles.rectangle.stack",
-                    title: "Regenerate",
-                    subtitle: "\(viewModel.outputIntent.defaultShotCount) shots. \(viewModel.captureMedium.title). \(viewModel.targetPlatform.title)."
+                    systemImage: "square.and.arrow.up",
+                    title: "Export Preview",
+                    subtitle: "\(trip.resolvedCount)/\(trip.allItems.count) resolved",
+                    accent: ArcPalette.glowSecondary
                 )
 
-                ShootPlanningControls(
-                    outputIntent: $viewModel.outputIntent,
-                    captureMedium: $viewModel.captureMedium,
-                    targetPlatform: $viewModel.targetPlatform,
-                    stylePreset: $viewModel.stylePreset,
-                    shootWindowMode: $viewModel.shootWindowMode,
-                    shootDate: $viewModel.shootDate,
-                    shootStartTime: $viewModel.shootStartTime,
-                    shootEndTime: $viewModel.shootEndTime
-                )
+                Text(TripDocumentMapper.markdownExport(for: trip))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+    }
 
-                ArcInlinePanel {
-                    ArcFeatureTitle(
-                        systemImage: "note.text",
-                        title: "Notes",
-                        subtitle: "Saved when you tap Done or regenerate.",
-                        accent: ArcPalette.glowSecondary
-                    )
+    private func stopEditor(_ stop: Stop) -> some View {
+        ArcInlinePanel {
+            ArcFeatureTitle(
+                systemImage: "mappin.and.ellipse",
+                title: stop.name,
+                subtitle: "\(stop.orderedStages.count) stages",
+                accent: ArcPalette.tint
+            )
 
-                    ShootNotesEditor(notes: $viewModel.notes)
-                }
+            ForEach(stop.orderedStages) { stage in
+                stageEditor(stage)
+            }
+        }
+    }
+
+    private func stageEditor(_ stage: Stage) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(stage.title)
+                    .font(.headline)
+
+                Spacer()
 
                 Button {
-                    Task {
-                        await generateRegenerationPreview()
-                    }
+                    addItem(to: stage)
                 } label: {
-                    HStack(spacing: 8) {
-                        if viewModel.isLoading {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-
-                        Text(viewModel.isLoading ? "Generating Preview..." : "Preview New Shot List")
-                            .frame(maxWidth: .infinity)
-                    }
+                    Image(systemName: "plus.circle")
                 }
-                .buttonStyle(.glassProminent)
-                .disabled(viewModel.isLoading || isApplyingRegeneration)
-
-                if !pendingRegenerationDrafts.isEmpty {
-                    ArcInlinePanel {
-                        ArcFeatureTitle(
-                            systemImage: "doc.text.magnifyingglass",
-                            title: "Preview Ready",
-                            subtitle: "Current shot list stays unchanged until you replace it.",
-                            accent: ArcPalette.glowSecondary
-                        )
-
-                        ShootDraftPreviewList(items: pendingRegenerationDrafts)
-
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 8) {
-                                discardPreviewButton
-                                replaceShotListButton
-                            }
-
-                            VStack(spacing: 10) {
-                                discardPreviewButton
-                                replaceShotListButton
-                            }
-                        }
-                    }
-                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add item")
             }
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-        }
-    }
 
-    private var contextSection: some View {
-        Section {
-            ArcFeatureCard(accent: contextAccent) {
-                ArcFeatureTitle(
-                    systemImage: hasCachedContext ? "checkmark.circle.fill" : "map.circle.fill",
-                    title: hasCachedContext ? "Context ready" : "Fetch context",
-                    subtitle: contextSubtitle,
-                    accent: contextAccent
+            if !stage.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(stage.goal)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if stage.orderedItems.isEmpty {
+                Text("No items in this stage.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                CaptureItemList(
+                    items: stage.orderedItems,
+                    onEdit: { editingItem = $0 },
+                    onDelete: deleteItem
                 )
-
-                if let contextRefreshError {
-                    ArcInlineError(message: contextRefreshError)
-                }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        refreshContextButton
-                        inspectContextLink
-                    }
-
-                    VStack(spacing: 10) {
-                        refreshContextButton
-                        inspectContextLink
-                    }
-                }
-            }
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-        }
-    }
-
-    private var refreshContextButton: some View {
-        Button {
-            Task {
-                await refreshContext()
-            }
-        } label: {
-            HStack(spacing: 8) {
-                if isRefreshingContext {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-
-                Text(isRefreshingContext ? "Refreshing..." : (hasCachedContext ? "Refresh Context" : "Fetch Context"))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.glass)
-        .disabled(isRefreshingContext || viewModel.isLoading)
-    }
-
-    private var discardPreviewButton: some View {
-        Button {
-            clearPendingRegeneration()
-        } label: {
-            Label("Discard Preview", systemImage: "xmark")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.glass)
-        .disabled(viewModel.isLoading || isApplyingRegeneration)
-    }
-
-    private var replaceShotListButton: some View {
-        Button {
-            Task {
-                await applyRegenerationPreview()
-            }
-        } label: {
-            HStack(spacing: 8) {
-                if isApplyingRegeneration {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-
-                Label("Replace Shot List", systemImage: "checkmark.circle")
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.glassProminent)
-        .disabled(viewModel.isLoading || isApplyingRegeneration || pendingRegenerationDrafts.isEmpty)
-    }
-
-    @ViewBuilder
-    private var inspectContextLink: some View {
-        if hasCachedContext {
-            NavigationLink {
-                LocationContextView(location: location, locationEnricher: locationEnricher)
-            } label: {
-                Label("Inspect", systemImage: "doc.text.magnifyingglass")
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glass)
-        }
-    }
-
-    private var editItemSheet: some View {
-        NavigationStack {
-            Form {
-                Section("Shot") {
-                    TextField("Title", text: $editTitle)
-                    TextField("Role", text: $editRole)
-                    TextField("Guidance", text: $editGuidance, axis: .vertical)
-                        .lineLimit(4, reservesSpace: true)
-                }
-            }
-            .navigationTitle("Edit Shot")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        editingItem = nil
-                    }
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        saveItemEdits()
-                    }
-                }
             }
         }
-    }
-
-    private var hasCachedContext: Bool {
-        !location.enrichmentJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var contextAccent: Color {
-        hasCachedContext ? ArcPalette.tint : ArcPalette.glowPrimary
-    }
-
-    private var contextSubtitle: String {
-        if let lastEnrichedAt = location.lastEnrichedAt, hasCachedContext {
-            return "Cached \(lastEnrichedAt.formatted(date: .abbreviated, time: .shortened)). Regeneration will use landmarks, weather, references, and sun/moon timing."
-        }
-
-        return "Fetch landmarks, weather, references, and sun/moon timing before regenerating this shot list."
-    }
-
-    private func refreshContext() async {
-        guard !isRefreshingContext else {
-            return
-        }
-
-        guard let shootWindow = viewModel.shootWindowInterval else {
-            contextRefreshError = "End time must be after start time."
-            return
-        }
-
-        isRefreshingContext = true
-        contextRefreshError = nil
-        defer { isRefreshingContext = false }
-
-        let bundle = await locationEnricher.enrich(location: location, shootWindow: shootWindow)
-
-        do {
-            let formattedJSON = try bundle.formattedJSONString()
-            location.enrichmentJSON = formattedJSON
-            location.lastEnrichedAt = bundle.generatedAt
-            try modelContext.save()
-            clearPendingRegeneration()
-            viewModel.refreshReferenceCacheStatus(for: location)
-        } catch {
-            contextRefreshError = error.localizedDescription
+        .padding(12)
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 
-    private func generateRegenerationPreview() async {
-        guard let generationResult = await viewModel.generatePreview(for: location) else {
-            return
-        }
-
-        pendingRegenerationDrafts = generationResult.drafts.map(ShootDraftItem.init)
-        pendingRegenerationRawResponse = generationResult.rawResponse
-    }
-
-    private func applyRegenerationPreview() async {
-        guard !pendingRegenerationDrafts.isEmpty else {
-            return
-        }
-
-        isApplyingRegeneration = true
-        defer { isApplyingRegeneration = false }
-
-        let didApply = await viewModel.applyGeneratedPlan(
-            rawResponse: pendingRegenerationRawResponse,
-            drafts: pendingRegenerationDrafts.map(\.plannedShotDraft),
-            for: location,
-            modelContext: modelContext,
-            approve: true
-        )
-
-        if didApply {
-            clearPendingRegeneration()
-            selectedSection = .checklist
-        }
-    }
-
-    private func clearPendingRegeneration() {
-        pendingRegenerationDrafts = []
-        pendingRegenerationRawResponse = ""
-    }
-
-    private func saveExistingPlanMetadata() {
-        guard let plan = location.plan else {
-            return
-        }
-
-        plan.notes = viewModel.notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        plan.outputIntentRawValue = viewModel.outputIntent.rawValue
-        plan.captureMediumRawValue = viewModel.captureMedium.rawValue
-        plan.targetPlatformRawValue = viewModel.targetPlatform.rawValue
-        plan.stylePresetRawValue = viewModel.stylePreset.rawValue
-        plan.shootWindowModeRawValue = viewModel.shootWindowMode.rawValue
-        plan.shootWindowSummary = viewModel.shootWindowSummary
-        plan.shootDate = viewModel.shootDate
-        plan.shootStartTime = viewModel.shootStartTime
-        plan.shootEndTime = viewModel.shootEndTime
-        plan.isApprovedForField = true
-        plan.completedAt = nil
+    private func saveMetadata() {
+        trip.title = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? trip.title : title
+        trip.summary = summary
         try? modelContext.save()
     }
 
-    private func beginEditing(_ item: ShootPlanItem) {
-        editTitle = item.title
-        editRole = item.role
-        editGuidance = item.guidance
+    private func addItem(to stage: Stage) {
+        let item = CaptureItem(
+            orderIndex: stage.orderedItems.count,
+            title: "New field item",
+            guidance: "Add the field guidance before capture.",
+            kind: .shot,
+            priority: .optional,
+            origin: .fieldAdded,
+            stage: stage
+        )
+        stage.items.append(item)
+        try? modelContext.save()
         editingItem = item
     }
 
-    private func saveItemEdits() {
-        guard let currentItem = editingItem else {
-            return
+    private func deleteItem(_ item: CaptureItem) {
+        if let stage = item.stage {
+            stage.items.removeAll { $0.id == item.id }
+            for (index, item) in stage.orderedItems.enumerated() {
+                item.orderIndex = index
+            }
         }
 
-        let cleanTitle = editTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanRole = editRole.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanGuidance = editGuidance.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !cleanTitle.isEmpty, !cleanGuidance.isEmpty else {
-            return
-        }
-
-        currentItem.title = cleanTitle
-        currentItem.role = cleanRole.isEmpty ? "Support" : cleanRole
-        currentItem.guidance = cleanGuidance
-        location.plan?.isApprovedForField = true
-        location.plan?.completedAt = nil
-        try? modelContext.save()
-        editingItem = nil
-    }
-
-    private func deleteItem(_ item: ShootPlanItem) {
-        guard let plan = location.plan else {
-            return
-        }
-
-        let remainingItems = plan.orderedItems.filter { $0.id != item.id }
-        for (index, remainingItem) in remainingItems.enumerated() {
-            remainingItem.orderIndex = index
-        }
-
-        plan.items.removeAll { $0.id == item.id }
-        plan.isApprovedForField = !plan.items.isEmpty
-        plan.completedAt = nil
         modelContext.delete(item)
         try? modelContext.save()
     }
 }
 
+private struct CaptureItemEditSheet: View {
+    let item: CaptureItem
+    let onSave: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var guidance: String
+    @State private var kind: FieldGuideItemKind
+    @State private var priority: FieldGuidePriority
+    @State private var isBeforeLeaving: Bool
+
+    init(item: CaptureItem, onSave: @escaping () -> Void) {
+        self.item = item
+        self.onSave = onSave
+        _title = State(initialValue: item.title)
+        _guidance = State(initialValue: item.guidance)
+        _kind = State(initialValue: item.kind)
+        _priority = State(initialValue: item.priority)
+        _isBeforeLeaving = State(initialValue: item.isBeforeLeaving)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Item") {
+                    TextField("Title", text: $title)
+                    TextField("Guidance", text: $guidance, axis: .vertical)
+                        .lineLimit(3...7)
+                }
+
+                Section("Role") {
+                    Picker("Kind", selection: $kind) {
+                        ForEach(FieldGuideItemKind.allCases) { kind in
+                            Text(kind.title).tag(kind)
+                        }
+                    }
+
+                    Picker("Priority", selection: $priority) {
+                        ForEach(FieldGuidePriority.allCases) { priority in
+                            Text(priority.title).tag(priority)
+                        }
+                    }
+
+                    Toggle("Before leaving", isOn: $isBeforeLeaving)
+                }
+            }
+            .navigationTitle("Edit Item")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        save()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private func save() {
+        item.title = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? item.title : title
+        item.guidance = guidance
+        item.kind = kind
+        item.priority = priority
+        item.isBeforeLeaving = isBeforeLeaving
+        onSave()
+    }
+}
+
 private enum PlanEditorSection: String, CaseIterable, Identifiable {
     case checklist
-    case regenerate
-    case context
+    case trip
+    case exports
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .checklist:
-            return "Shot List"
-        case .regenerate:
-            return "Regenerate"
-        case .context:
-            return "Context"
+            return "Guide"
+        case .trip:
+            return "Trip"
+        case .exports:
+            return "Export"
         }
     }
 }

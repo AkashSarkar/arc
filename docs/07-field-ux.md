@@ -1,8 +1,8 @@
 # 07 — Field UX
 
-> **Agent Brief** — Status: Current | Applies to: P0-P3 (specs land in P2-P3) | Owner doc for: field-mode interaction design, stage mantra, done-enough state, Story Safety Net, golden-hour nudge, geofence/Live Activity behavior
+> **Agent Brief** — Status: Current | Applies to: owner-test MVP field execution plus gated P3 extensions | Owner doc for: field-mode interaction design, stage mantra, done-enough state, Story Safety Net, golden-hour nudge, geofence/Live Activity behavior
 > Read [docs/00-index.md](00-index.md) first. Behavioral rules: /AGENTS.md (wins on conduct). Current build phase: see [docs/08-roadmap.md](08-roadmap.md).
-> Code pointers verified against ux-redesign @ abce4bc + uncommitted field-guide work (2026-07-06). Re-verify line numbers before editing.
+> Code pointers verified against `task-owner-mvp-through-p4` after Trip field executor implementation (2026-07-07). Re-verify line numbers before editing.
 
 Field mode is the product's moat surface. Data model terms (Stage, CaptureItem, priorities) are defined in [docs/05-data-model.md](05-data-model.md); the story-coverage positioning rationale is in [docs/03-market-research.md](03-market-research.md).
 
@@ -27,7 +27,7 @@ The stage mantra is the primary field surface. Everything else in field mode is 
 - **One-tap confirm**: tapping the mantra's confirm affordance marks the next unresolved must in the stage as captured. No list navigation required for the happy path.
 - **Drill-down**: the full per-stage checklist (today's `FieldView` item rows) is one tap below the mantra and is the *secondary* surface. Notes, photos, skips, and field-added items live there.
 - **Everywhere the stage is summarized** (field screen header, Live Activity, lock screen — section 6), the mantra format is the same string. One format, memorized once.
-- **Blocking dependency**: `Stage.goal` as a real entity property still requires schema v2 ([ADR-0002](adr/ADR-0002-schema-v2-rebuild.md)). The transitional P0 stopgap is implemented: the goal captured in `FieldGuideStageDraft` during import is persisted per item as `stageGoal` (ShootPlan.swift:173) and written in the commit loop (ImportPlanFlowView.swift:522-545, `:535`). Do not build the full mantra on the v1 model; fix the model first.
+- **Implementation status**: `Stage.goal` is now a real schema-v2 property, and `Stage.mantra` is computed from the goal plus unresolved must-get items. Field mode surfaces this in the trip header and stage card. The owner-test MVP still shows the expanded checklist on the same scroll surface; the stricter "no-scroll primary surface" remains the P3 polish target.
 
 ## 3. Done-enough spec ("story is safe")
 
@@ -41,7 +41,7 @@ The stage mantra is the primary field surface. Everything else in field mode is 
 
 The universal fallback vocabulary — the minimum coverage that makes any location editable into a story:
 
-| Slot | Kind | Priority | Current hardcoded draft (FieldView.swift:539-546) |
+| Slot | Kind | Priority | Current draft |
 |------|------|----------|---------------------------------------------------|
 | Wide establishing | shot | must | "Wide shot of where you are" — hold 8-10 s |
 | Detail close-up | shot | must | "Close-up of one useful detail" |
@@ -50,10 +50,8 @@ The universal fallback vocabulary — the minimum coverage that makes any locati
 | Honest reaction voice line | voice | must | "Honest reaction" — one line on what changed/surprised/mattered |
 | Leaving transition | transition | must, before-leaving | "Leaving shot" |
 
-Target behavior (schema v2):
-
 - Safety net items are injected as a **Stage of kind `safetyNet`** with `CaptureItem.origin == .safetyNet`, not appended into the current stage.
-- **Dedup by design**: a plan/stop has at most one safety-net stage; a second tap targets the existing stage (re-surfaces it, resets nothing). The P0 dedup guard is implemented — `addSafetyNetItems()` at FieldView.swift:533-577 skips drafts whose normalized title already exists unresolved in the current stage (:548-555) — but the v2 safetyNet-stage design remains the structural fix (resolved items can still be re-added by design).
+- **Dedup by design**: a stop has at most one safety-net stage; a second tap targets the existing stage and skips template titles already present on that safety-net stage.
 - **Framing**: memory prosthetic, never guilt. Offer copy in the spirit of "grab the basics before you go" — never "you haven't captured enough."
 
 ## 5. Golden-hour nudge spec
@@ -77,17 +75,19 @@ Governed by [ADR-0007](adr/ADR-0007-while-in-use-location-surfacing.md), the sco
 
 ## 7. Interaction inventory (current build)
 
-Verified against FieldView.swift on ux-redesign @ abce4bc + uncommitted work. Preserve these behaviors through the schema v2 rebuild unless a spec above changes them.
+Verified against the Trip-backed `FieldView` on `task-owner-mvp-through-p4` (2026-07-07).
 
-| Interaction | Behavior | Pointer |
-|-------------|----------|---------|
-| Capture / skip | Mutually exclusive toggles: capturing clears skipped and vice versa; haptic feedback on both | FieldView.swift:389-405 |
-| Field note | Per-item note editor sheet writes `ShootPlanItem.fieldNote`; non-empty notes render inline on the item row | FieldView.swift:248-252 (sheet), :947-948 (inline render), :1223-1258 (`FieldNoteEditorSheet`, write at :1255) |
-| Photo attach | PhotosPicker per item; image resized to 1600 px max side, JPEG 0.76; attaching marks the item captured and clears skipped | FieldView.swift:489-508, 590-607 |
-| Before-leave gate | Advancing with unresolved before-leaving items opens a confirm dialog listing the blockers by title; "Move Anyway" overrides | FieldView.swift:263-273, 377, 447-458 |
-| Plan completion | Explicit "Complete this plan?" confirmation; sets `completedAt`, dismisses to review | FieldView.swift:253-262, 471-480 |
-| Safety net | Sheet appends the 6 hardcoded items to the current stage, skipping titles already unresolved there (P0 dedup guard at :548-555); superseded structurally by the section 4 spec | FieldView.swift:246, 533-577 |
-| High-contrast toggle | Toolbar sun button + settings toggle flip `Arc.FieldHighContrastMode`; propagated as `isHighContrast` to all field components | FieldView.swift:15, 157-163, 200 |
-| Stage navigation | Previous/next stage against computed `fieldStages` (grouped on `stageOrderIndex`/`stageTitle` — ShootPlan.swift:104) | FieldView.swift:437-469 |
+| Interaction | Behavior |
+|-------------|----------|
+| Trip timeline | Horizontal stop timeline shows stop status and resolved item count; tapping a stop makes it active and sets arrival time if needed. |
+| Map | MapKit panel renders stops with resolved coordinates; unresolved stops stay in the timeline and info sheet with a needs-location state. |
+| Stage mantra | Header/stage card use `Stage.mantra` (`Stage.goal` plus unresolved must count). The bottom "Capture Next" action marks the next unresolved item captured. |
+| Capture / skip | Mutually exclusive toggles: capturing clears skipped and vice versa; both set provenance timestamps (`capturedAt` / `skippedAt`). |
+| Field note | Per-item note editor writes `CaptureItem.fieldNote`; non-empty notes render inline on the item row and export summary. |
+| Photo attach | PhotosPicker per item; attaching stores photo data, marks captured, and clears skipped. |
+| Stage / stop navigation | Previous/next stage operates within the active stop; advancing past the final stage marks the stop done and activates the next stop. |
+| Safety net | Sheet injects template items into one `Stage(kind: safetyNet)` per stop with `origin == safetyNet`; duplicate template titles are skipped. |
+| Plan completion | Explicit confirmation sets `Trip.status = completed`, writes `completedAt`, generates `TripArtifact(kind: script)`, and dismisses to the list/review path. |
+| High-contrast toggle | Toolbar sun button + settings toggle flip `Arc.FieldHighContrastMode`; field panels consume `isHighContrast`. |
 
-Known gaps in the current build (do not treat as intended behavior): cached Flickr reference images (`DiskReferenceImageCache`) are never displayed in any view; stage goal is absent from the persisted model (section 2); there is no done-enough state, no mantra surface, no golden-hour nudge, and no location surfacing yet — those are P2-P3 work per [docs/08-roadmap.md](08-roadmap.md).
+Known gaps in the current build (do not treat as intended behavior): cached Flickr reference images (`DiskReferenceImageCache`) are still not displayed in any view; golden-hour nudges and location surfacing/Live Activity remain gated P3 work; the off-app web preview/email-capture loop remains gated P4 work.

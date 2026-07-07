@@ -165,10 +165,10 @@ struct ShootDraftList: View {
     }
 }
 
-struct ShootPlanItemList: View {
-    let items: [ShootPlanItem]
-    let onEdit: (ShootPlanItem) -> Void
-    let onDelete: (ShootPlanItem) -> Void
+struct CaptureItemList: View {
+    let items: [CaptureItem]
+    let onEdit: (CaptureItem) -> Void
+    let onDelete: (CaptureItem) -> Void
 
     var body: some View {
         VStack(spacing: 12) {
@@ -176,7 +176,7 @@ struct ShootPlanItemList: View {
                 ShootDraftRow(
                     sequenceNumber: index + 1,
                     title: item.title,
-                    role: item.role,
+                    role: item.displayRoleTitle,
                     guidance: item.guidance,
                     onEdit: { onEdit(item) },
                     onDelete: { onDelete(item) }

@@ -37,12 +37,13 @@ Rules: all import tiers emit `ArcPlanDocument`; all exports and shares serialize
 - A pre-storage contract risks mismatch with schema v2; mitigated by [../05-data-model.md](../05-data-model.md) and [../06-import-spec.md](../06-import-spec.md) being written against the same field list.
 
 **Follow-ups:**
-- P1: implement `Arc/Core/Documents/` + declare `com.arc.guide` / `.arcguide` in the app target; specify the field-level schema in [../06-import-spec.md](../06-import-spec.md).
+- P1: implement `Arc/Core/Documents/` + declare `com.arc.guide` / `.arcguide` in the app target; specify the field-level schema in [../05-data-model.md](../05-data-model.md).
 - P2: schema v2 ↔ document mapping in feature code ([ADR-0002](ADR-0002-schema-v2-rebuild.md)).
 - P4: `kind: guide` export + share preview path ([../08-roadmap.md](../08-roadmap.md)).
 
 ## Links
 
-- [../06-import-spec.md](../06-import-spec.md) — field-level document schema
+- [../05-data-model.md](../05-data-model.md) — field-level document schema
+- [../06-import-spec.md](../06-import-spec.md) — tier behavior / AFP conventions
 - [../04-architecture.md](../04-architecture.md) — module boundary rules
 - [ADR-0001-tiered-import.md](ADR-0001-tiered-import.md), [ADR-0002-schema-v2-rebuild.md](ADR-0002-schema-v2-rebuild.md), [ADR-0003-store-reset-pre-ship.md](ADR-0003-store-reset-pre-ship.md), [ADR-0006-email-capture-and-paid-guides.md](ADR-0006-email-capture-and-paid-guides.md)

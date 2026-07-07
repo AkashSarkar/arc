@@ -1,0 +1,18 @@
+{
+  "fixtureClass": "chatgpt-template",
+  "expectedDayCount": 1,
+  "stageCount": { "min": 2, "max": 2 },
+  "expectedStopTitles": ["Landwehr Canal"],
+  "expectedGeoAnchors": ["https://goo.gl/maps/example"],
+  "expectedKinds": {
+    "Why this canal matters": "voice",
+    "Water under bridge": "sound",
+    "Bike roll-by": "transition",
+    "Check if the bridge cafe is open": "note"
+  },
+  "expectedPriorities": {
+    "Water under bridge": "optional",
+    "Final wide frame": "must"
+  },
+  "expectedBeforeLeavingTitles": ["Final wide frame"]
+}

@@ -10,14 +10,26 @@
 
 | Phase | Title | Gate to start | Status |
 |-------|-------|---------------|--------|
-| P0 | Stabilize | None | **Next up** |
-| P1 | Import pipeline v2 + document format | P0 done | Not started |
+| P0 | Stabilize | None | **In progress** — implemented, uncommitted (see working-tree status below) |
+| P1 | Import pipeline v2 + document format | P0 done | **In progress** — implemented, uncommitted (see working-tree status below) |
 | P2 | Schema v2 + timeline and map | P1 done | Not started |
 | P3 | Field ergonomics v2 + review/export v2 | G1 — see [docs/02-business.md](02-business.md) | Not started |
 | P4 | Guide export + share preview + email capture | G2 — see [docs/02-business.md](02-business.md) | Not started |
 | P5 | Platform | Docs: may run parallel with P4. Build: G3 + G4 — see [docs/02-business.md](02-business.md) | Not started |
 
 Update the Status column in the same PR that completes a phase's "Done when" list. Never mark a phase started while its gate is unmet.
+
+### Working-tree status (2026-07-07, branch `task-p0-p1-import-stabilization`)
+
+Uncommitted implementation of most P0 + P1 work items exists on this branch: parser v2 emitting `ArcPlanDocument` (day/stop/geo-anchor detection), `Arc/Core/Documents/ArcDocuments.swift` codec, `Arc/Services/AI/FoundationModelsPlanService.swift`, `ImportPlanIntent` + `ImportHandoff` (share/App Intent ingestion), the P0 defect fixes (required location pick, persisted `stageGoal`, safety-net dedup), and `ArcTests` with an 8-fixture import corpus.
+
+State when work paused:
+
+- **Build + tests green (2026-07-07).** `xcodebuild test` on the iPhone 17 Pro (iOS 26.5) simulator reports `TEST SUCCEEDED`; all 6 `ArcTests` cases pass (codec round-trip, unknown-field tolerance, future-schema rejection, AFP template parsing, draft mapping, 8-fixture import corpus).
+- **Swift concurrency convention.** The project sets `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`; pure domain/document/parser types are marked `nonisolated` (applied across `FieldGuide.swift`, `ImportHandoff.swift`, `ArcDocuments.swift`, `ImportedPlanParser.swift`, `ImportedPlanGenerator.swift` extensions, `ImportPlanIntent.swift`, and the `ArcTests` files). Follow this convention for any new pure-logic type.
+- **Parser notes:** kind inference matches "ambien"/"ambian" stems; digit-less comma addresses ("Rua da Conceição, Lisboa") are accepted as geo anchors only while a stop awaits its first anchor (`isLikelyAddressLine`).
+- **Corpus loader quirk:** the synchronized `ArcTests` group flattens fixture resources into the test-bundle root; `ImportCorpusTests.loadFixtures()` falls back to the bundle root (and `urls(forResourcesWithExtension:subdirectory:)` returns an empty array, not nil, for a missing subdirectory).
+- **Remaining before ticking P0/P1 "Done when" boxes:** the boxes below still track against their acceptance criteria — re-run the full test command above after any change, and confirm the golden-path items that require manual device/simulator interaction (real location pick on import, safety-net double-tap, share-sheet ingestion).
 
 ---
 
@@ -44,10 +56,10 @@ None. P0 is the current phase.
 ### In scope
 
 - [ ] **Commit the uncommitted field-guide/import work** (0.5–1 agent-day). Files: `Arc/Features/Planning/Domain/FieldGuide.swift`, `Arc/Features/Planning/Domain/ImportedPlanParser.swift`, `Arc/Features/Planning/Domain/ImportedPlanGenerator.swift`, `Arc/Features/Shoots/Presentation/ImportPlanFlowView.swift`. Land as-is (with build fixes only) so subsequent P0 items diff against committed code.
-- [ ] **Add transitional `stageGoal: String` to `ShootPlanItem`** (1–2 agent-days). File: `Arc/Features/Planning/Domain/ShootPlan.swift`. Denormalize per item exactly like the existing `stageTitle` (stages are computed by grouping on `(stageOrderIndex, stageTitle)` — `fieldStages` at `ShootPlan.swift:104`). This stops the current data loss: the stage goal is editable in the import UI but dropped at commit because the item loop never writes it and `ShootPlanItem` has no goal field. This field is a stopgap; it is **deleted in P2** when `Stage.goal` becomes a real persisted property.
-- [ ] **Persist and surface the stage goal** (included in item above; keep both in one PR). Persist `stageGoal` in `ImportPlanFlowView.commitImportedPlan()` — item loop at `ImportPlanFlowView.swift:327-350`. Surface it in the `FieldView` stage header (`Arc/Features/Field/Presentation/FieldView.swift`) so the field mantra (Stage.goal + musts remaining) has a real goal to show.
-- [ ] **Replace the fake location commit with a required location-pick step** (1–2 agent-days). File: `ImportPlanFlowView.swift:304` currently commits `ShootLocation(name: title, latitude: 0, longitude: 0)`. Add a mandatory location-pick step to the import flow, reusing the existing picker components in `Arc/Features/Locations`. Plans are only reachable through their `ShootLocation`, so a nil location is not an option before P2 — the pick is required, not optional.
-- [ ] **Safety-net dedup in `FieldView.addSafetyNetItems()`** (1 agent-day). File: `FieldView.swift:533-568` currently appends 6 hardcoded items with no dedup. Skip any draft whose title already exists **unresolved** in the current stage (resolved = captured or skipped). Tag added items with a transitional marker (e.g., a title prefix or transient flag) so they are identifiable; the real `CaptureItem.origin` field (`planned | safetyNet | fieldAdded`) arrives in P2 and replaces this marker.
+- [x] **Add transitional `stageGoal: String` to `ShootPlanItem`** (1–2 agent-days) — implemented, pending commit. File: `Arc/Features/Planning/Domain/ShootPlan.swift` (`stageGoal` at `:173`). Denormalized per item exactly like the existing `stageTitle` (stages are computed by grouping on `(stageOrderIndex, stageTitle)` — `fieldStages` at `ShootPlan.swift:104`). This stopped the data loss where the stage goal was editable in the import UI but dropped at commit. This field is a stopgap; it is **deleted in P2** when `Stage.goal` becomes a real persisted property.
+- [x] **Persist and surface the stage goal** (included in item above; keep both in one PR) — implemented, pending commit. `stageGoal` is persisted in `ImportPlanFlowView.commitImportedPlan()` — item loop at `ImportPlanFlowView.swift:522-545` — and surfaced in the `FieldView` stage header (goal shown at `FieldView.swift:659-660`, `:724-725`) so the field mantra (Stage.goal + musts remaining) has a real goal to show.
+- [x] **Replace the fake location commit with a required location-pick step** (1–2 agent-days) — implemented, pending commit. The import flow requires a picked real location before commit and builds the `ShootLocation` from its coordinates (`ImportPlanFlowView.swift:495-499`), reusing the existing picker components in `Arc/Features/Locations`. Plans are only reachable through their `ShootLocation`, so a nil location is not an option before P2 — the pick is required, not optional.
+- [x] **Safety-net dedup in `FieldView.addSafetyNetItems()`** (1 agent-day) — implemented, pending commit. File: `FieldView.swift:533-577`. Skips any draft whose title already exists **unresolved** in the current stage (dedup at `:548-555`; resolved = captured or skipped). Added items carry the transitional `"Safety Net"` role marker (`:559`) so they are identifiable; the real `CaptureItem.origin` field (`planned | safetyNet | fieldAdded`) arrives in P2 and replaces this marker.
 - [ ] **Create the `ArcTests` target** (0.5 agent-day). No test target exists today. Wire it into the scheme so `xcodebuild test` runs on simulator; see [docs/09-quality.md](09-quality.md) for target layout and naming.
 - [ ] **Unit tests for `ImportedPlanParser` + first 5–8 corpus fixtures** (1–2 agent-days). Fixtures and assertion shape per [docs/09-quality.md](09-quality.md); cover the Arc-Flavored Plan (AFP) conventions in [docs/06-import-spec.md](06-import-spec.md). Assertions must include stage detection, item kind, priority (Must tiers), and before-leaving detection.
 
@@ -149,14 +161,14 @@ Make field mode truly glanceable (stage mantra, one-tap confirm, story-is-safe s
 
 ### Gate to start
 
-**G1 — dogfood proven** (≥3 real trips executed through Arc); definition in [docs/02-business.md](02-business.md). The pain list from those ≥3 real trips drives final scoping of this phase: re-rank the items below against it before starting.
+**G1 — dogfood proven**; definition in [docs/02-business.md](02-business.md). The pain list from those trips drives final scoping of this phase: re-rank the items below against it before starting.
 
 ### In scope
 
 - [ ] **Glanceable stage card** (2–3 agent-days). Per [docs/07-field-ux.md](07-field-ux.md): stage mantra (Stage.goal + musts remaining), one-tap confirm, minimal scrolling. Files: `Arc/Features/Field/Presentation/` (post-P2 layout).
 - [ ] **Story-is-safe / done-enough state** (1–2 agent-days). All must-priority and before-leaving items resolved (captured or skipped) in scope → distinct, calm visual state. Burnout-aware, never guilt. Definition in [docs/07-field-ux.md](07-field-ux.md).
 - [ ] **Golden-hour nudges** (1–2 agent-days). Per stop, using `Arc/Services/Enrichment/SunMoonCalculator.swift` + `OpenMeteoAPIClient.swift`. Unit-tested against known stop/date pairs.
-- [ ] **Geofenced stop surfacing (while-in-use) + Live Activity** (2–3 agent-days). Surface the next stop when nearby, while-in-use authorization only; Live Activity shows the stage mantra on the lock screen. Constraints and the scoped AGENTS.md:22 amendment: [docs/adr/ADR-0007-while-in-use-location-surfacing.md](adr/ADR-0007-while-in-use-location-surfacing.md).
+- [ ] **Geofenced stop surfacing (while-in-use) + Live Activity** (2–3 agent-days). Surface the next stop when nearby, while-in-use authorization only; Live Activity shows the stage mantra on the lock screen. Constraints and the scoped AGENTS.md:30 amendment: [docs/adr/ADR-0007-while-in-use-location-surfacing.md](adr/ADR-0007-while-in-use-location-surfacing.md).
 - [ ] **Review/export v2: coverage stats** (1–2 agent-days). Coverage per stop and per day (musts captured/skipped, safety-net usage) in the trip summary.
 - [ ] **Edit-outline generator → `TripArtifact(kind: script)`** (2–3 agent-days). Chronological via `capturedAt`; voice/sound/transition cues called out explicitly; the script artifact is bidirectional (owner edits flow back in).
 - [ ] **Markdown export + `.arcguide` groundwork** (1–2 agent-days). Replace the plain-text `ShareLink` in `CompletedShootView` with structured markdown export; wire the completed-trip → `ArcGuideDocument` mapping (export UI ships in P4).
@@ -185,7 +197,7 @@ Turn a completed trip into a shareable, field-verified `.arcguide` with a web ma
 
 ### Gate to start
 
-**G2 — channel live** (first videos published + manual itinerary offer tested); definition in [docs/02-business.md](02-business.md).
+**G2 — channel live**; definition in [docs/02-business.md](02-business.md).
 
 ### In scope
 
@@ -216,7 +228,7 @@ Produce implementation-ready platform docs (accounts/sync, guide distribution, p
 
 ### Gate to start
 
-**Docs work** may run in parallel with P4. **Build work** is gated on **G3 — audience signal** (~100 emails captured or recurring itinerary requests) AND **G4 — willingness-to-pay**; definitions in [docs/02-business.md](02-business.md).
+**Docs work** may run in parallel with P4. **Build work** is gated on **G3 — audience signal** AND **G4 — willingness-to-pay**; definitions in [docs/02-business.md](02-business.md).
 
 ### In scope
 

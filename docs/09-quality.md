@@ -6,7 +6,7 @@
 
 ## 1. Test target setup: `ArcTests`
 
-There is **no test target today**. Creating one is the **first work item of P0 Stabilize** (see [docs/08-roadmap.md](08-roadmap.md)).
+There is **no test target today**. Creating one is a **P0 Stabilize work item** (see [docs/08-roadmap.md](08-roadmap.md)).
 
 | Decision | Value |
 |---|---|
@@ -96,10 +96,10 @@ Ported from the pre-docs README; README now links here instead of carrying its o
 3. Invalid custom timing blocks progress before generation.
 4. Generate fetches context and produces a reviewable draft.
 5. Start Capture Plan commits the location, plan, and shot list.
-6. Import Existing Plan accepts pasted Apple Notes text, builds editable stages locally, and can optionally improve the draft with AI. (Known defects to watch until fixed: committed location gets `latitude: 0, longitude: 0` at `ImportPlanFlowView.swift:304`; edited stage goal is dropped at commit, item loop at `ImportPlanFlowView.swift:327-350`.)
+6. Import Existing Plan accepts pasted Apple Notes text, builds editable stages locally, and can optionally improve the draft with AI. (Regression checks for the implemented P0 fixes: committed location uses the picked coordinates — `ImportPlanFlowView.swift:495-499`; edited stage goal survives commit — `:535` in the item loop at `:522-545`.)
 7. Field progress updates as items are captured or skipped.
 8. Before You Leave blocks accidental stage advancement while must-have or leaving items are unresolved.
-9. Story Safety Net adds recovery coverage to the current stage. (Known defect: `FieldView.swift:533-568` appends 6 hardcoded items with no dedup — verify no duplicates once fixed.)
+9. Story Safety Net adds recovery coverage to the current stage. (Regression check for the implemented P0 fix: repeated Safety Net taps add no duplicate unresolved items — dedup guard at `FieldView.swift:548-555`.)
 10. Capturing or skipping the final item shows a completion prompt and does not auto-complete.
 11. Complete Plan moves it to Completed with captured, skipped, missing, and stage-grouped export sections.
 12. Reopen moves the plan back to Active.

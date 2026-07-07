@@ -5,11 +5,11 @@ Date: 2026-07-06
 
 ## Context
 
-`AGENTS.md:22` bans background execution and location use without an explicit product requirement — a correct default for a battery-critical field app. Field-behavior truth: the owner does not scroll checklists mid-shoot; they glance at checkpoints. Surfacing the right Stop and its stage mantra at the right moment (arriving at a stop, golden hour approaching) is core to glanceable field mode, and requires a scoped location capability. This ADR is the explicit product requirement AGENTS.md demands.
+`AGENTS.md:30` bans background execution and location use without an explicit product requirement — a correct default for a battery-critical field app. Field-behavior truth: the owner does not scroll checklists mid-shoot; they glance at checkpoints. Surfacing the right Stop and its stage mantra at the right moment (arriving at a stop, golden hour approaching) is core to glanceable field mode, and requires a scoped location capability. This ADR is the explicit product requirement AGENTS.md demands.
 
 ## Decision
 
-Geofenced stop surfacing, Live Activities, and golden-hour nudges ARE an explicit product requirement (P3, [../07-field-ux.md](../07-field-ux.md)). This ADR amends the `AGENTS.md:22` ban for exactly this scope and nothing more.
+Geofenced stop surfacing, Live Activities, and golden-hour nudges ARE an explicit product requirement (P3, [../07-field-ux.md](../07-field-ux.md)). This ADR amends the `AGENTS.md:30` ban for exactly this scope and nothing more.
 
 Hard scope — every clause is binding:
 
@@ -40,11 +40,11 @@ Any expansion of this scope (Always authorization, background updates, location 
 **Follow-ups:**
 - P3: implement region monitoring + Live Activity per [../07-field-ux.md](../07-field-ux.md); requires persisted `Stage`/`Stop` identity from schema v2 ([ADR-0002](ADR-0002-schema-v2-rebuild.md)).
 - P3: add the permission-denied UX path and battery acceptance test to [../09-quality.md](../09-quality.md).
-- Now: record the pointer to this ADR next to the rule at `AGENTS.md:22` (conduct file remains the authority on conduct).
+- Done: the pointer to this ADR is recorded next to the rule at `AGENTS.md:30` (conduct file remains the authority on conduct).
 
 ## Links
 
 - [../07-field-ux.md](../07-field-ux.md) — owner doc for field-mode behavior
 - [../09-quality.md](../09-quality.md) — battery acceptance criterion
 - [ADR-0002-schema-v2-rebuild.md](ADR-0002-schema-v2-rebuild.md) — stage/stop identity prerequisite
-- /AGENTS.md — the amended conduct rule (AGENTS.md:22)
+- /AGENTS.md — the amended conduct rule (AGENTS.md:30)

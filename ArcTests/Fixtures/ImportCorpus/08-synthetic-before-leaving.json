@@ -1,0 +1,16 @@
+{
+  "fixtureClass": "adversarial",
+  "expectedDayCount": 1,
+  "stageCount": { "min": 2, "max": 2 },
+  "expectedStopTitles": ["Quiet Pier"],
+  "expectedGeoAnchors": ["https://maps.app.goo.gl/pier"],
+  "expectedKinds": {
+    "Water against posts": "sound",
+    "Leaving transition": "transition"
+  },
+  "expectedPriorities": {
+    "Water against posts": "optional",
+    "Leaving transition": "must"
+  },
+  "expectedBeforeLeavingTitles": ["Leaving transition"]
+}

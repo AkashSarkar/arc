@@ -85,7 +85,7 @@ Rooftop view:
 - transition: Arriving at the top - door push into the light
 
 Before you leave:
-- Leaving transition - descending timelapse (optional)
+- Leaving transition - descending timelapse (must)
 
 ## Day 2: Waterfront
 
@@ -201,7 +201,7 @@ Pipeline output feeds the draft/edit/commit flow (`ImportPlanFlowView` today). C
 
 1. **Never lose source lines.** The full pasted/shared text is stored on the `ArcPlanDocument`; every source line is accounted for per contract rule 2 in section 4. A user must always be able to see what the parser was given.
 2. **Every item is traceable or marked synthetic.** `sourceLine` or synthetic marker — enforced at document validation, not by convention.
-3. **Geo anchors are preserved verbatim** into `Stop.sourceGeoAnchor`. No geocoding, no URL unshortening, no coordinate writes during parse. Never fabricate coordinates — the current commit path does exactly this (`ImportPlanFlowView.swift:304` writes `latitude: 0, longitude: 0`). P0 removes the immediate defect by requiring a picked real `ShootLocation` before commit; P1 preserves geo anchors through the document pipeline; P2 removes the need for this stopgap by making `Stop.latitude` / `Stop.longitude` optional.
+3. **Geo anchors are preserved verbatim** into `Stop.sourceGeoAnchor`. No geocoding, no URL unshortening, no coordinate writes during parse. Never fabricate coordinates — the pre-P0 commit path did exactly this (fabricated `0,0`); fixed by the P0 required location-pick step — `ShootLocation` is now built from the picked draft at `ImportPlanFlowView.swift:495-499`. P1 preserves geo anchors through the document pipeline; P2 removes the need for this stopgap by making `Stop.latitude` / `Stop.longitude` optional.
 4. **Import works fully offline via T0.** No spinner that depends on network or model download may block producing a draft.
 5. **Committing a draft is the only write to storage.** Parse, tier fallback, and draft editing are pure/in-memory. P0 fixes the current commit defects as stopgaps: no placeholder coordinates, and no silent stage-goal loss. P1 keeps the same invariant while mapping `ArcPlanDocument` into the flat model; P2 resolves both structurally in schema v2 ([docs/05-data-model.md](05-data-model.md)).
 

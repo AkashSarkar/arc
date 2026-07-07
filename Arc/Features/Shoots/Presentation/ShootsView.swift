@@ -10,12 +10,16 @@ struct ShootsView: View {
     let locationEditorServices: LocationEditorServiceFactory
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \ShootLocation.createdAt, order: .reverse) private var locations: [ShootLocation]
     @State private var selectedSegment: ShootSegment = .active
     @State private var isPresentingNewShoot = false
     @State private var isPresentingImport = false
     @State private var isPresentingSettings = false
     @State private var selectedShoot: ShootLocation?
+    @State private var pendingImportText = ""
+    @State private var pendingImportDocument: ArcPlanDocument?
+    @State private var importHandoffError: String?
 
     private var activeShoots: [ShootLocation] {
         locations.filter { $0.status == .active }
@@ -158,6 +162,8 @@ struct ShootsView: View {
                     }
 
                     Button {
+                        pendingImportText = ""
+                        pendingImportDocument = nil
                         isPresentingImport = true
                     } label: {
                         Label("Import Existing Plan", systemImage: "square.and.arrow.down")
@@ -180,9 +186,16 @@ struct ShootsView: View {
             }
         }
         .sheet(isPresented: $isPresentingImport) {
-            ImportPlanFlowView(aiService: aiService) { location in
+            ImportPlanFlowView(
+                aiService: aiService,
+                locationEditorServices: locationEditorServices,
+                initialText: pendingImportText,
+                initialDocument: pendingImportDocument
+            ) { location in
                 selectedSegment = .active
                 selectedShoot = location
+                pendingImportText = ""
+                pendingImportDocument = nil
             }
         }
         .sheet(isPresented: $isPresentingSettings) {
@@ -201,6 +214,27 @@ struct ShootsView: View {
                 referenceImageCache: referenceImageCache,
                 locationEditorServices: locationEditorServices
             )
+        }
+        .task {
+            consumePendingImportIfNeeded()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                consumePendingImportIfNeeded()
+            }
+        }
+        .onOpenURL { url in
+            handleIncomingImportURL(url)
+        }
+        .alert("Could Not Import File", isPresented: Binding(
+            get: { importHandoffError != nil },
+            set: { if !$0 { importHandoffError = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                importHandoffError = nil
+            }
+        } message: {
+            Text(importHandoffError ?? "")
         }
     }
 
@@ -244,6 +278,8 @@ struct ShootsView: View {
                         .buttonStyle(.glassProminent)
 
                         Button {
+                            pendingImportText = ""
+                            pendingImportDocument = nil
                             isPresentingImport = true
                         } label: {
                             Label("Import Plan", systemImage: "square.and.arrow.down")
@@ -301,6 +337,32 @@ struct ShootsView: View {
     private func delete(_ location: ShootLocation) {
         modelContext.delete(location)
         try? modelContext.save()
+    }
+
+    private func consumePendingImportIfNeeded() {
+        guard let text = ImportHandoff.consumePendingText() else {
+            return
+        }
+
+        pendingImportText = text
+        pendingImportDocument = nil
+        isPresentingImport = true
+    }
+
+    private func handleIncomingImportURL(_ url: URL) {
+        do {
+            if let document = try ImportHandoff.readDocument(from: url) {
+                pendingImportDocument = document
+                pendingImportText = document.sourceText
+            } else {
+                pendingImportText = try ImportHandoff.readText(from: url)
+                pendingImportDocument = nil
+            }
+
+            isPresentingImport = true
+        } catch {
+            importHandoffError = error.localizedDescription
+        }
     }
 }
 

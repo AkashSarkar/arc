@@ -1,0 +1,16 @@
+{
+  "fixtureClass": "apple-notes",
+  "expectedDayCount": 1,
+  "stageCount": { "min": 2, "max": 2 },
+  "expectedStopTitles": ["Station exit"],
+  "expectedGeoAnchors": ["8 AM - Station exit"],
+  "expectedKinds": {
+    "Nice to get subway ambience": "sound",
+    "Leaving shot toward the alley": "transition"
+  },
+  "expectedPriorities": {
+    "Nice to get subway ambience": "optional",
+    "Important reflection detail in puddle": "must"
+  },
+  "expectedBeforeLeavingTitles": ["Leaving shot toward the alley"]
+}

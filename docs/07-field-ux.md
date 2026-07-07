@@ -27,7 +27,7 @@ The stage mantra is the primary field surface. Everything else in field mode is 
 - **One-tap confirm**: tapping the mantra's confirm affordance marks the next unresolved must in the stage as captured. No list navigation required for the happy path.
 - **Drill-down**: the full per-stage checklist (today's `FieldView` item rows) is one tap below the mantra and is the *secondary* surface. Notes, photos, skips, and field-added items live there.
 - **Everywhere the stage is summarized** (field screen header, Live Activity, lock screen — section 6), the mantra format is the same string. One format, memorized once.
-- **Blocking dependency**: `Stage.goal` requires schema v2 ([ADR-0002](adr/ADR-0002-schema-v2-rebuild.md)). Today the goal is captured in `FieldGuideStageDraft` during import but **dropped at commit** — the item loop at ImportPlanFlowView.swift:327-350 never writes it and `ShootPlanItem` has no goal field. Do not build the mantra on the v1 model; fix the model first.
+- **Blocking dependency**: `Stage.goal` as a real entity property still requires schema v2 ([ADR-0002](adr/ADR-0002-schema-v2-rebuild.md)). The transitional P0 stopgap is implemented: the goal captured in `FieldGuideStageDraft` during import is persisted per item as `stageGoal` (ShootPlan.swift:173) and written in the commit loop (ImportPlanFlowView.swift:522-545, `:535`). Do not build the full mantra on the v1 model; fix the model first.
 
 ## 3. Done-enough spec ("story is safe")
 
@@ -53,8 +53,8 @@ The universal fallback vocabulary — the minimum coverage that makes any locati
 Target behavior (schema v2):
 
 - Safety net items are injected as a **Stage of kind `safetyNet`** with `CaptureItem.origin == .safetyNet`, not appended into the current stage.
-- **Dedup by design**: a plan/stop has at most one safety-net stage; a second tap targets the existing stage (re-surfaces it, resets nothing). This structurally fixes the current defect — `addSafetyNetItems()` at FieldView.swift:533-568 appends the 6 items to the current stage with no dedup, so repeated taps insert duplicates.
-- **Framing**: memory prosthetic, never guilt. Offer copy in the spirit of "grab the basics before you go" — never "you haven't captured enough." The safety net is also the T0 import fallback vocabulary (see [docs/06-import-spec.md](06-import-spec.md)); the two must stay one list.
+- **Dedup by design**: a plan/stop has at most one safety-net stage; a second tap targets the existing stage (re-surfaces it, resets nothing). The P0 dedup guard is implemented — `addSafetyNetItems()` at FieldView.swift:533-577 skips drafts whose normalized title already exists unresolved in the current stage (:548-555) — but the v2 safetyNet-stage design remains the structural fix (resolved items can still be re-added by design).
+- **Framing**: memory prosthetic, never guilt. Offer copy in the spirit of "grab the basics before you go" — never "you haven't captured enough."
 
 ## 5. Golden-hour nudge spec
 
@@ -66,7 +66,7 @@ Target behavior (schema v2):
 
 ## 6. Geofence + Live Activity spec
 
-Governed by [ADR-0007](adr/ADR-0007-while-in-use-location-surfacing.md), the scoped amendment to AGENTS.md:22 (which otherwise bans background execution/location).
+Governed by [ADR-0007](adr/ADR-0007-while-in-use-location-surfacing.md), the scoped amendment to AGENTS.md:30 (which otherwise bans background execution/location).
 
 - **Authorization**: while-in-use only. Never request Always. Never prompt at app launch — request in context, when the user enables arrival surfacing.
 - **Arrival behavior**: arriving inside a stop's region surfaces that stop's first stage (foreground: navigates/highlights; via Live Activity otherwise). Surfacing only — no auto-capture, no auto-advance.
@@ -82,11 +82,11 @@ Verified against FieldView.swift on ux-redesign @ abce4bc + uncommitted work. Pr
 | Interaction | Behavior | Pointer |
 |-------------|----------|---------|
 | Capture / skip | Mutually exclusive toggles: capturing clears skipped and vice versa; haptic feedback on both | FieldView.swift:389-405 |
-| Field note | Per-item note editor sheet writes `ShootPlanItem.fieldNote`; non-empty notes render inline on the item row | FieldView.swift:248-251, 920-921, 1196 |
-| Photo attach | PhotosPicker per item; image resized to 1600 px max side, JPEG 0.76; attaching marks the item captured and clears skipped | FieldView.swift:489-508, 574-591 |
+| Field note | Per-item note editor sheet writes `ShootPlanItem.fieldNote`; non-empty notes render inline on the item row | FieldView.swift:248-252 (sheet), :947-948 (inline render), :1223-1258 (`FieldNoteEditorSheet`, write at :1255) |
+| Photo attach | PhotosPicker per item; image resized to 1600 px max side, JPEG 0.76; attaching marks the item captured and clears skipped | FieldView.swift:489-508, 590-607 |
 | Before-leave gate | Advancing with unresolved before-leaving items opens a confirm dialog listing the blockers by title; "Move Anyway" overrides | FieldView.swift:263-273, 377, 447-458 |
 | Plan completion | Explicit "Complete this plan?" confirmation; sets `completedAt`, dismisses to review | FieldView.swift:253-262, 471-480 |
-| Safety net | Sheet appends 6 hardcoded items to the current stage — **no dedup; duplicate-insertion defect**; replaced by section 4 spec | FieldView.swift:246, 533-568 |
+| Safety net | Sheet appends the 6 hardcoded items to the current stage, skipping titles already unresolved there (P0 dedup guard at :548-555); superseded structurally by the section 4 spec | FieldView.swift:246, 533-577 |
 | High-contrast toggle | Toolbar sun button + settings toggle flip `Arc.FieldHighContrastMode`; propagated as `isHighContrast` to all field components | FieldView.swift:15, 157-163, 200 |
 | Stage navigation | Previous/next stage against computed `fieldStages` (grouped on `stageOrderIndex`/`stageTitle` — ShootPlan.swift:104) | FieldView.swift:437-469 |
 

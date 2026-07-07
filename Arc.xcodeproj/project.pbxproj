@@ -13,6 +13,7 @@
 /* Begin PBXFileReference section */
 		388CBEDE2F95ECCA008580B5 /* Arc.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Arc.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		388CBEEC2F95FBEF008580B5 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		A10000012F9A000000000001 /* ArcTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ArcTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -21,10 +22,22 @@
 			path = Arc;
 			sourceTree = "<group>";
 		};
+		A10000022F9A000000000002 /* ArcTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ArcTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		388CBEDB2F95ECCA008580B5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A10000042F9A000000000004 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -38,6 +51,7 @@
 			isa = PBXGroup;
 			children = (
 				388CBEE02F95ECCA008580B5 /* Arc */,
+				A10000022F9A000000000002 /* ArcTests */,
 				388CBEDF2F95ECCA008580B5 /* Products */,
 				388CBEEC2F95FBEF008580B5 /* README.md */,
 			);
@@ -47,11 +61,22 @@
 			isa = PBXGroup;
 			children = (
 				388CBEDE2F95ECCA008580B5 /* Arc.app */,
+				A10000012F9A000000000001 /* ArcTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		A100000A2F9A00000000000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 388CBED62F95ECCA008580B5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 388CBEDD2F95ECCA008580B5;
+			remoteInfo = Arc;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXNativeTarget section */
 		388CBEDD2F95ECCA008580B5 /* Arc */ = {
@@ -76,6 +101,29 @@
 			productReference = 388CBEDE2F95ECCA008580B5 /* Arc.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A10000062F9A000000000006 /* ArcTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000072F9A000000000007 /* Build configuration list for PBXNativeTarget "ArcTests" */;
+			buildPhases = (
+				A10000032F9A000000000003 /* Sources */,
+				A10000042F9A000000000004 /* Frameworks */,
+				A10000052F9A000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A100000B2F9A00000000000B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A10000022F9A000000000002 /* ArcTests */,
+			);
+			name = ArcTests;
+			packageProductDependencies = (
+			);
+			productName = ArcTests;
+			productReference = A10000012F9A000000000001 /* ArcTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -88,6 +136,10 @@
 				TargetAttributes = {
 					388CBEDD2F95ECCA008580B5 = {
 						CreatedOnToolsVersion = 26.4.1;
+					};
+					A10000062F9A000000000006 = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = 388CBEDD2F95ECCA008580B5;
 					};
 				};
 			};
@@ -106,6 +158,7 @@
 			projectRoot = "";
 			targets = (
 				388CBEDD2F95ECCA008580B5 /* Arc */,
+				A10000062F9A000000000006 /* ArcTests */,
 			);
 		};
 /* End PBXProject section */
@@ -119,6 +172,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000052F9A000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -129,7 +189,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A10000032F9A000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A100000B2F9A00000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 388CBEDD2F95ECCA008580B5 /* Arc */;
+			targetProxy = A100000A2F9A00000000000A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		388CBEE72F95ECCC008580B5 /* Debug */ = {
@@ -323,6 +398,58 @@
 			};
 			name = Release;
 		};
+		A10000082F9A000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BGV45FXXFU;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = camera.ArcTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Arc.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Arc";
+			};
+			name = Debug;
+		};
+		A10000092F9A000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BGV45FXXFU;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = camera.ArcTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Arc.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Arc";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -340,6 +467,15 @@
 			buildConfigurations = (
 				388CBEEA2F95ECCC008580B5 /* Debug */,
 				388CBEEB2F95ECCC008580B5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000072F9A000000000007 /* Build configuration list for PBXNativeTarget "ArcTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000082F9A000000000008 /* Debug */,
+				A10000092F9A000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

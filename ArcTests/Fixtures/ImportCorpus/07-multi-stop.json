@@ -1,0 +1,16 @@
+{
+  "fixtureClass": "chatgpt-template",
+  "expectedDayCount": 1,
+  "stageCount": { "min": 4, "max": 4 },
+  "expectedStopTitles": ["Miradouro", "Tram corner"],
+  "expectedGeoAnchors": ["https://maps.google.com/?q=Miradouro+Lisbon", "Rua da Conceição, Lisboa"],
+  "expectedKinds": {
+    "Bell and street bed": "sound",
+    "Tram passing out of frame": "transition"
+  },
+  "expectedPriorities": {
+    "Bell and street bed": "optional",
+    "Wide overlook": "must"
+  },
+  "expectedBeforeLeavingTitles": ["Leaving stairs shot", "Tram passing out of frame"]
+}

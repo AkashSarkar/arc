@@ -89,7 +89,7 @@ Governs the field UX contract in [docs/07-field-ux.md](07-field-ux.md). Method c
 | Story Safety Net | Event-videography doctrine explicitly uses "safety net" coverage language; the memorized 5-shot rule and 3-shot sequence are the field-standard fallback vocabulary; codifying universal fallbacks (establishing, walking transition, doorway) is exactly what educators teach. No competitor has anything like it [CP][SP] |
 | Post-shoot review / edit outline | Top downstream complaint is the footage graveyard — "overwhelmed with the amount of travel video footage," unable to cut a film because no story was captured (Quora); "random clips over music will get a C grade" (Lost LeBlanc) [CP] |
 | Before You Leave stage | Battery/card rituals (spares stored at 40–60%, formatted cards, power banks, offline maps) are universally repeated in creator gear guides; "before you go" sections are near-universal in real itineraries [CP][IT] |
-| Location-triggered plan surfacing | SimplistUGC ships "plan appears when you arrive" today; the mechanic is market-proven [SP]. Arc's scoped, while-in-use-only version is recorded in [ADR-0007](adr/ADR-0007-while-in-use-location-surfacing.md) (AGENTS.md:22 otherwise bans background location) |
+| Location-triggered plan surfacing | SimplistUGC ships "plan appears when you arrive" today; the mechanic is market-proven [SP]. Arc's scoped, while-in-use-only version is recorded in [ADR-0007](adr/ADR-0007-while-in-use-location-surfacing.md) (AGENTS.md:30 otherwise bans background location) |
 
 ### 4.2 Challenged assumptions — design around these
 

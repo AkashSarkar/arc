@@ -1,0 +1,17 @@
+{
+  "fixtureClass": "adversarial",
+  "expectedDayCount": 1,
+  "stageCount": { "min": 2, "max": 2 },
+  "expectedStopTitles": ["06-adversarial-bullets"],
+  "expectedGeoAnchors": [],
+  "expectedKinds": {
+    "say why this street feels different": "voice",
+    "crossing ambience 10 sec optional": "sound",
+    "transition leaving the side street": "transition"
+  },
+  "expectedPriorities": {
+    "crossing ambience 10 sec optional": "optional",
+    "quick shoes detail": "must"
+  },
+  "expectedBeforeLeavingTitles": ["Leaving transition"]
+}

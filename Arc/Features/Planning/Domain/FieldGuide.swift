@@ -1,6 +1,6 @@
 import Foundation
 
-enum CapturePlanSource: String, CaseIterable, Identifiable {
+nonisolated enum CapturePlanSource: String, CaseIterable, Identifiable {
     case locationGenerated
     case importedText
 
@@ -16,7 +16,7 @@ enum CapturePlanSource: String, CaseIterable, Identifiable {
     }
 }
 
-enum FieldGuideItemKind: String, CaseIterable, Identifiable {
+nonisolated enum FieldGuideItemKind: String, CaseIterable, Identifiable {
     case shot
     case voice
     case sound
@@ -56,7 +56,7 @@ enum FieldGuideItemKind: String, CaseIterable, Identifiable {
     }
 }
 
-enum FieldGuidePriority: String, CaseIterable, Identifiable {
+nonisolated enum FieldGuidePriority: String, CaseIterable, Identifiable {
     case must
     case optional
 
@@ -72,7 +72,7 @@ enum FieldGuidePriority: String, CaseIterable, Identifiable {
     }
 }
 
-struct FieldGuideDraft: Equatable {
+nonisolated struct FieldGuideDraft: Equatable {
     var title: String
     var storySummary: String
     var stages: [FieldGuideStageDraft]
@@ -84,32 +84,37 @@ struct FieldGuideDraft: Equatable {
     }
 }
 
-struct FieldGuideStageDraft: Identifiable, Equatable {
+nonisolated struct FieldGuideStageDraft: Identifiable, Equatable {
     let id: UUID
     var title: String
     var goal: String
+    var sourceGeoAnchor: String
     var items: [FieldGuideItemDraft]
 
     init(
         id: UUID = UUID(),
         title: String,
         goal: String = "",
+        sourceGeoAnchor: String = "",
         items: [FieldGuideItemDraft] = []
     ) {
         self.id = id
         self.title = title
         self.goal = goal
+        self.sourceGeoAnchor = sourceGeoAnchor
         self.items = items
     }
 }
 
-struct FieldGuideItemDraft: Identifiable, Equatable {
+nonisolated struct FieldGuideItemDraft: Identifiable, Equatable {
     let id: UUID
     var title: String
     var guidance: String
     var kind: FieldGuideItemKind
     var priority: FieldGuidePriority
     var isBeforeLeaving: Bool
+    var sourceLine: String
+    var isSynthetic: Bool
 
     init(
         id: UUID = UUID(),
@@ -117,7 +122,9 @@ struct FieldGuideItemDraft: Identifiable, Equatable {
         guidance: String = "",
         kind: FieldGuideItemKind = .shot,
         priority: FieldGuidePriority = .must,
-        isBeforeLeaving: Bool = false
+        isBeforeLeaving: Bool = false,
+        sourceLine: String = "",
+        isSynthetic: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -125,17 +132,20 @@ struct FieldGuideItemDraft: Identifiable, Equatable {
         self.kind = kind
         self.priority = priority
         self.isBeforeLeaving = isBeforeLeaving
+        self.sourceLine = sourceLine
+        self.isSynthetic = isSynthetic
     }
 }
 
-struct FieldGuideStageKey: Hashable {
+nonisolated struct FieldGuideStageKey: Hashable {
     let orderIndex: Int
     let title: String
 }
 
-struct FieldGuideStage: Identifiable {
+nonisolated struct FieldGuideStage: Identifiable {
     let orderIndex: Int
     let title: String
+    let goal: String
     let items: [ShootPlanItem]
 
     var id: Int { orderIndex }

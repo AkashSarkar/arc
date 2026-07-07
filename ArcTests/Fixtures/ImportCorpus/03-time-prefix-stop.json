@@ -1,0 +1,16 @@
+{
+  "fixtureClass": "apple-notes",
+  "expectedDayCount": 1,
+  "stageCount": { "min": 2, "max": 2 },
+  "expectedStopTitles": ["Kuromon Market north gate"],
+  "expectedGeoAnchors": ["9:00 AM - Kuromon Market north gate"],
+  "expectedKinds": {
+    "First bite reaction": "voice",
+    "Market walla": "sound"
+  },
+  "expectedPriorities": {
+    "Market walla": "optional",
+    "Takoyaki steam close-up": "must"
+  },
+  "expectedBeforeLeavingTitles": ["Leaving transition"]
+}

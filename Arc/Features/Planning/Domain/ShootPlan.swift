@@ -109,10 +109,12 @@ final class ShootPlan {
             )
         }
         .map { key, items in
-            FieldGuideStage(
+            let sortedItems = items.sorted { $0.orderIndex < $1.orderIndex }
+            return FieldGuideStage(
                 orderIndex: key.orderIndex,
                 title: key.title,
-                items: items.sorted { $0.orderIndex < $1.orderIndex }
+                goal: sortedItems.first(where: { !$0.resolvedStageGoal.isEmpty })?.resolvedStageGoal ?? "",
+                items: sortedItems
             )
         }
         .sorted { $0.orderIndex < $1.orderIndex }
@@ -168,6 +170,7 @@ final class ShootPlanItem {
     var isCaptured: Bool
     var stageTitle: String = "Shot List"
     var stageOrderIndex: Int = 0
+    var stageGoal: String = ""
     var kindRawValue: String?
     var priorityRawValue: String?
     var isBeforeLeaving: Bool = false
@@ -186,6 +189,7 @@ final class ShootPlanItem {
         isCaptured: Bool = false,
         stageTitle: String = "Shot List",
         stageOrderIndex: Int = 0,
+        stageGoal: String = "",
         kind: FieldGuideItemKind = .shot,
         priority: FieldGuidePriority = .must,
         isBeforeLeaving: Bool = false,
@@ -203,6 +207,7 @@ final class ShootPlanItem {
         self.isCaptured = isCaptured
         self.stageTitle = stageTitle
         self.stageOrderIndex = stageOrderIndex
+        self.stageGoal = stageGoal
         self.kindRawValue = kind.rawValue
         self.priorityRawValue = priority.rawValue
         self.isBeforeLeaving = isBeforeLeaving
@@ -241,5 +246,9 @@ final class ShootPlanItem {
 
     var resolvedStageOrderIndex: Int {
         max(stageOrderIndex, 0)
+    }
+
+    var resolvedStageGoal: String {
+        stageGoal.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

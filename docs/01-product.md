@@ -26,9 +26,9 @@ The SCRIPT artifact is **bidirectional**: unlike IDEAS and SHOOT LIST (inputs), 
 
 1. Paste a trip plan into `ImportPlanFlowView` (paste → draft → edit → commit).
 2. Cloud AI cleanup (`ImportedPlanGenerator`) or heuristic parse (`ImportedPlanParser`) produces a `FieldGuideDraft`.
-3. Commit creates a `ShootPlan` + `ShootPlanItem`s under a `ShootLocation` (known defect: commits at lat/long 0,0 — `ImportPlanFlowView.swift:304`; stage goal dropped at commit — `ImportPlanFlowView.swift:327-350`).
+3. Commit creates a `ShootPlan` + `ShootPlanItem`s under a `ShootLocation` (P0 stopgaps implemented: commit requires a picked real location — `ImportPlanFlowView.swift:495-499`; stage goal persisted per item via transitional `stageGoal` — `ImportPlanFlowView.swift:522-545`).
 4. Execute in `FieldView` one stage at a time: capture / skip / note / photo.
-5. Add Story Safety Net items on demand (known defect: 6 hardcoded items, no dedup — `FieldView.swift:533-568`).
+5. Add Story Safety Net items on demand (6 hardcoded items; P0 unresolved-title dedup guard implemented — `FieldView.swift:533-577`).
 6. Review in `CompletedShootView`; export as plain text via ShareLink.
 
 ### Target (end state across P1–P4; phasing in [docs/08-roadmap.md](08-roadmap.md))
@@ -79,12 +79,12 @@ Do not build, propose, or scaffold these. Phase non-goals in [docs/08-roadmap.md
 | Android | iPhone-first, one owner, Apple-frameworks-first (P-6). No cross-platform pressure exists. |
 | Team collaboration | Solo creator product. Crew sync is Shot Lister's territory. |
 | Marketplace-first strategy | Crowded, fee-compressed, owned by Rexby/Mindtrip. Arc feeds marketplaces; it does not become one. |
-| Background location tracking | Banned by AGENTS.md:22; only the scoped while-in-use amendment in [ADR-0007](adr/ADR-0007-while-in-use-location-surfacing.md) is permitted. |
+| Background location tracking | Banned by AGENTS.md:30; only the scoped while-in-use amendment in [ADR-0007](adr/ADR-0007-while-in-use-location-surfacing.md) is permitted. |
 | Social feed / community features | Attention sink with no path to the core loop; audience lives on YouTube and the email list. |
 
 ## 7. Success metrics — dogfood era (pre-G2)
 
-These are the only metrics that matter until the gates in [docs/02-business.md](02-business.md) advance. All are observable from the owner's real trips (G1 requires ≥3).
+These are the only metrics that matter until the gates in [docs/02-business.md](02-business.md) advance. All are observable from the owner's real trips (see G1 in [docs/02-business.md](02-business.md)).
 
 | Metric | Pass condition |
 |---|---|

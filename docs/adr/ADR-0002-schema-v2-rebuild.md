@@ -5,7 +5,7 @@ Date: 2026-07-06
 
 ## Context
 
-The current model (`ShootPlan` with cascade `[ShootPlanItem]`) has no persisted stage: stages are computed by grouping items on `(stageOrderIndex, stageTitle)` (`Arc/Features/Planning/Domain/ShootPlan.swift:104`). This already loses data — the stage `goal` is editable in the import UI but dropped at commit because `ShootPlanItem` has no field for it (`ImportPlanFlowView.swift:327-350`) — gives stages no stable identity for geofencing or telemetry, and re-groups on hot paths in field mode. The app is pre-ship with dev/personal data only, so one coherent rebuild is cheaper and safer than three incremental migrations toward the same shape.
+The current model (`ShootPlan` with cascade `[ShootPlanItem]`) has no persisted stage: stages are computed by grouping items on `(stageOrderIndex, stageTitle)` (`Arc/Features/Planning/Domain/ShootPlan.swift:104`). This previously lost data — the stage `goal` was editable in the import UI but dropped at commit — until the P0 transitional `stageGoal` stopgap (`ShootPlan.swift:173`; written in the commit loop at `ImportPlanFlowView.swift:522-545`); it still gives stages no stable identity for geofencing or telemetry, and re-groups on hot paths in field mode. The app is pre-ship with dev/personal data only, so one coherent rebuild is cheaper and safer than three incremental migrations toward the same shape.
 
 ## Decision
 
@@ -26,7 +26,7 @@ Rules: define the full entity/field contract in [../05-data-model.md](../05-data
 
 **Positive:**
 - `Stage.goal` and stage identity are first-class: fixes the goal-drop defect structurally and unblocks geofenced stop surfacing ([ADR-0007](ADR-0007-while-in-use-location-surfacing.md)), stage-level telemetry, and the stage mantra in field mode.
-- `CaptureItem.origin` makes Story Safety Net dedup trivial (fixes the class of bug in `FieldView.swift:533-568`).
+- `CaptureItem.origin` makes Story Safety Net dedup trivial (fixes the class of bug in `FieldView.swift:533-577`).
 - `TripArtifact` makes the ideas → shoot list → script loop a data-model fact, enabling script generation from execution data.
 - No grouping on field-mode hot paths; battery-light requirement gets structural help.
 

@@ -36,20 +36,21 @@ Three `@Model` classes plus value-type draft structs. All plans are reachable on
 | `location` | `ShootLocation?` | inverse of `ShootLocation.plan` |
 | `items` | `[ShootPlanItem]` | `@Relationship(deleteRule: .cascade)` |
 
-Computed (selected): `fieldStages` (ShootPlan.swift:104 — see §1.5), `currentStage` (:121), `capturedCount`/`skippedCount`/`resolvedCount`/`missingCount` (:134-148), `completionProgress`/`fieldCompletionProgress` (:150-158).
+Computed (selected): `fieldStages` (ShootPlan.swift:104 — see §1.5), `currentStage` (:123), `capturedCount`/`skippedCount`/`resolvedCount`/`missingCount` (:136-150), `completionProgress`/`fieldCompletionProgress` (:152-160).
 
-### 1.2 `ShootPlanItem` — [Arc/Features/Planning/Domain/ShootPlan.swift:161](../Arc/Features/Planning/Domain/ShootPlan.swift)
+### 1.2 `ShootPlanItem` — [Arc/Features/Planning/Domain/ShootPlan.swift:163](../Arc/Features/Planning/Domain/ShootPlan.swift)
 
 | Field | Type | Notes |
 |---|---|---|
 | `id` | `UUID` | `@Attribute(.unique)` |
 | `orderIndex` | `Int` | global across the whole plan, not per stage |
 | `title` | `String` | |
-| `role` | `String` | free text; import writes `item.kind.title` into it (ImportPlanFlowView.swift:335) — redundant with `kind` |
+| `role` | `String` | free text; import writes `item.kind.title` into it (ImportPlanFlowView.swift:531) — redundant with `kind` |
 | `guidance` | `String` | |
 | `isCaptured` | `Bool` | |
 | `stageTitle` | `String` | default `"Shot List"` — denormalized stage identity |
 | `stageOrderIndex` | `Int` | default `0` — denormalized stage identity |
+| `stageGoal` | `String` | default `""` — transitional P0 denormalized stage goal (deleted in v2 when `Stage.goal` lands) |
 | `kindRawValue` | `String?` | `FieldGuideItemKind`: `shot` \| `voice` \| `sound` \| `transition` \| `note` |
 | `priorityRawValue` | `String?` | `FieldGuidePriority`: `must` \| `optional` |
 | `isBeforeLeaving` | `Bool` | default `false` |
@@ -59,7 +60,7 @@ Computed (selected): `fieldStages` (ShootPlan.swift:104 — see §1.5), `current
 | `capturedPhotoAttachedAt` | `Date?` | |
 | `plan` | `ShootPlan?` | inverse of `ShootPlan.items` |
 
-Computed: `kind`, `priority`, `displayRoleTitle`, `isResolved` (`isCaptured || isSkipped`), `resolvedStageTitle`, `resolvedStageOrderIndex` (ShootPlan.swift:216-244).
+Computed: `kind`, `priority`, `displayRoleTitle`, `isResolved` (`isCaptured || isSkipped`), `resolvedStageTitle`, `resolvedStageOrderIndex`, `resolvedStageGoal` (ShootPlan.swift:221-253).
 
 ### 1.3 `ShootLocation` — [Arc/Features/Locations/Domain/ShootLocation.swift:10](../Arc/Features/Locations/Domain/ShootLocation.swift)
 
@@ -67,7 +68,7 @@ Computed: `kind`, `priority`, `displayRoleTitle`, `isResolved` (`isCaptured || i
 |---|---|---|
 | `id` | `UUID` | `@Attribute(.unique)` |
 | `name` | `String` | |
-| `latitude` / `longitude` | `Double` | **non-optional** — import commits `0,0` (ImportPlanFlowView.swift:304) |
+| `latitude` / `longitude` | `Double` | **non-optional** — import now requires a picked location and commits its coordinates (ImportPlanFlowView.swift:495-499); optionality arrives with `Stop` in v2 |
 | `createdAt` | `Date` | |
 | `enrichmentJSON` | `String` | cached Overpass/Wikipedia/weather payload |
 | `lastEnrichedAt` | `Date?` | |
@@ -82,15 +83,15 @@ Not persisted. The import editor ([ImportPlanFlowView.swift](../Arc/Features/Sho
 | Type | Fields | Notes |
 |---|---|---|
 | `FieldGuideDraft` (FieldGuide.swift:75) | `title`, `storySummary`, `stages: [FieldGuideStageDraft]` | `Equatable`; `.empty` static |
-| `FieldGuideStageDraft` (:87) | `id UUID`, `title`, `goal`, `items: [FieldGuideItemDraft]` | **has `goal`** — see defect below |
-| `FieldGuideItemDraft` (:106) | `id UUID`, `title`, `guidance`, `kind`, `priority`, `isBeforeLeaving` | |
-| `FieldGuideStageKey` (:131) | `orderIndex Int`, `title String` | `Hashable` grouping key |
-| `FieldGuideStage` (:136) | `orderIndex`, `title`, `items: [ShootPlanItem]` | read-only projection; `progress`, `missingItems`, counts |
+| `FieldGuideStageDraft` (:87) | `id UUID`, `title`, `goal`, `sourceGeoAnchor`, `items: [FieldGuideItemDraft]` | **has `goal`** — persisted via the transitional `stageGoal` stopgap (§1.5) |
+| `FieldGuideItemDraft` (:109) | `id UUID`, `title`, `guidance`, `kind`, `priority`, `isBeforeLeaving`, `sourceLine`, `isSynthetic` | |
+| `FieldGuideStageKey` (:140) | `orderIndex Int`, `title String` | `Hashable` grouping key |
+| `FieldGuideStage` (:145) | `orderIndex`, `title`, `goal`, `items: [ShootPlanItem]` | read-only projection; `progress`, `missingItems`, counts |
 | Enums (:3-73) | `CapturePlanSource`, `FieldGuideItemKind`, `FieldGuidePriority` | raw-value `String` enums — the convention v2 keeps |
 
 ### 1.5 The three structural problems
 
-1. **Stage goal has nowhere to persist.** `FieldGuideStageDraft.goal` is editable in the import UI, but the commit loop (ImportPlanFlowView.swift:327-350) writes only item fields — `ShootPlanItem` has no goal column, so the goal is silently dropped. The stage mantra ([docs/07-field-ux.md](07-field-ux.md)) has no storage.
+1. **Stage goal has no stage-level home.** The P0 stopgap persists `FieldGuideStageDraft.goal` by denormalizing it per item into the transitional `stageGoal` field (written in the commit loop at ImportPlanFlowView.swift:522-545; read back into `FieldGuideStage.goal` by `fieldStages`). The residual issue: the goal is copied onto every item rather than stored as a stage-level property, so the stage mantra ([docs/07-field-ux.md](07-field-ux.md)) still lacks proper storage until `Stage.goal` in v2.
 2. **Stage identity is a fragile string pair.** A "stage" exists only as matching `(stageOrderIndex, stageTitle)` values denormalized onto every item. Renaming a stage means rewriting N items; a typo in one item forks the stage; there is no place for stage-level state (goal, kind, safety-net targeting).
 3. **`fieldStages` is computed on every access.** ShootPlan.swift:104 rebuilds a `Dictionary(grouping:)` + two sorts each time it is read. `FieldView` and progress rings read it in hot UI paths, so every SwiftData change re-runs the grouping for the whole plan.
 
@@ -176,7 +177,7 @@ The 3-artifact owner workflow, persisted. IDEAS and SHOOT LIST are ingested; SCR
 
 ### 3.4 `Stop`
 
-Replaces `ShootLocation`. Coordinates are **optional** — this kills the `0,0` defect (ImportPlanFlowView.swift:304) structurally. A stop with nil coordinates renders a **needs-location** badge; `sourceGeoAnchor` keeps the verbatim source line (Google Maps link / address / time-prefix line — see glossary in [docs/00-index.md](00-index.md)) so resolution can be retried anytime without re-importing.
+Replaces `ShootLocation`. Coordinates are **optional** — this removes the need for the P0 required-location-pick stopgap (commit builds `ShootLocation` from picked coordinates at ImportPlanFlowView.swift:495-499) structurally. A stop with nil coordinates renders a **needs-location** badge; `sourceGeoAnchor` keeps the verbatim source line (Google Maps link / address / time-prefix line — see glossary in [docs/00-index.md](00-index.md)) so resolution can be retried anytime without re-importing.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -200,7 +201,7 @@ Replaces `ShootLocation`. Coordinates are **optional** — this kills the `0,0` 
 
 ### 3.5 `Stage`
 
-The fix for §1.5 problems 1-3. Real identity, persisted `goal`, and a `kind` that gives Story Safety Net a proper target: injection creates or reuses the single `safetyNet` stage on the stop instead of blindly appending 6 hardcoded items (current defect: FieldView.swift:533-568, no dedup). Dedup becomes "does this stop's safetyNet stage already have this item title" — and coverage math stays honest because safety-net items are attributable.
+The fix for §1.5 problems 1-3. Real identity, persisted `goal`, and a `kind` that gives Story Safety Net a proper target: injection creates or reuses the single `safetyNet` stage on the stop instead of appending 6 hardcoded items to the current stage (FieldView.swift:533-577; the P0 unresolved-title dedup guard already exists at :548-555). Dedup becomes "does this stop's safetyNet stage already have this item title" — and coverage math stays honest because safety-net items are attributable.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -267,7 +268,7 @@ Mechanical guide for rewriting `FieldView`, `ShootsView`, `CompletedShootView`, 
 | `ShootLocation.latitude/longitude` | `Stop.latitude/longitude` (`Double?`) | `0,0` sentinel → `nil` + needs-location badge |
 | `ShootLocation.enrichmentJSON` / `lastEnrichedAt` | `Stop.enrichmentJSON` / `lastEnrichedAt` | enrichment pipeline retargets Stop |
 | `ShootLocation.status` (computed) | `Stop.statusRawValue` + `Trip.statusRawValue` | persisted, not derived |
-| "safety net items appended to current stage" (FieldView.swift:533-568) | items with `origin = safetyNet` in the stop's single `Stage(kind: safetyNet)` | dedup by title within that stage; injection is idempotent |
+| "safety net items appended to current stage" (FieldView.swift:533-577) | items with `origin = safetyNet` in the stop's single `Stage(kind: safetyNet)` | dedup by title within that stage; injection is idempotent |
 
 ---
 
@@ -276,7 +277,7 @@ Mechanical guide for rewriting `FieldView`, `ShootsView`, `CompletedShootView`, 
 - **No SwiftData migration for v1 → v2.** The app is pre-ship; the only store contents are the owner's dev data. Do not write `SchemaMigrationPlan`, do not write `VersionedSchema` for v1.
 - The v2 entities have **new class names** (`Trip`, `Stop`, `Stage`, `CaptureItem` vs `ShootPlan`, `ShootLocation`, `ShootPlanItem`), so the rebuild is clean: delete the old model files, register the new schema in `AppContainer`, and delete the store file on first launch after the schema change (or rely on a fresh install).
 - **Optional courtesy (recommended, small):** before the wipe, a one-shot debug-menu action that exports each existing `ShootPlan` to an `ArcPlanDocument` JSON file (§6) so dev trips can be re-imported. Best-effort only; do not block P2 on it.
-- **ADR-0003 expiry:** the day an external TestFlight build ships, this decision is void — from then on every schema change requires a `SchemaMigrationPlan` and versioned schemas. Roadmap places TestFlight after P3 ([docs/08-roadmap.md](08-roadmap.md)); re-check before starting any schema work.
+- **ADR-0003 expiry:** the day an external TestFlight build ships, this decision is void — from then on every schema change requires a `SchemaMigrationPlan` and versioned schemas. No external TestFlight build exists or is planned before P3 completes; re-check before starting any schema work.
 
 ---
 
@@ -285,7 +286,7 @@ Mechanical guide for rewriting `FieldView`, `ShootsView`, `CompletedShootView`, 
 ONE JSON schema, two kinds. `kind: "plan"` = a plan not yet executed (import target, pre-trip sharing). `kind: "guide"` = an executed plan with the `execution` block populated (the raw material for **field-verified** guide badging — see [docs/02-business.md](02-business.md)). Defined in **P1** as the parser output target ([docs/06-import-spec.md](06-import-spec.md)); storage v2 matches it in **P2**; guide export ships in **P4**.
 
 - Types live in `Arc/Core/Documents/`. **That folder must never import SwiftData.** The document is the contract; SwiftData is one storage backend behind it. Mapping code (document ↔ @Model) lives in the feature layer, not in Core/Documents.
-- `UTType`: `com.arc.guide`. File extension: `.arcguide`. Declare both in the app target's Info settings when export ships (P4); the type exists from P1 for internal use.
+- `UTType`: `com.arc.guide`. File extension: `.arcguide`. Declare both in the app target's Info settings in P1 (per [ADR-0004](adr/ADR-0004-arcguide-document-interchange.md); `.arcguide` document-open works from P1 — [docs/06-import-spec.md](06-import-spec.md) §1 row 5); export UI ships in P4.
 - The `FieldGuideDraft` value types (§1.4) are absorbed by these document types: the P1 import editor binds directly to mutable document sub-structs, and "commit" persists the document into storage.
 
 ### 6.1 Full example (`kind: "plan"`)
@@ -296,6 +297,8 @@ ONE JSON schema, two kinds. `kind: "plan"` = a plan not yet executed (import tar
   "schemaVersion": 1,
   "kind": "plan",
   "generator": "Arc/1.0 (import-t1)",
+  "sourceText": "…full pasted/shared text, verbatim…",
+  "unparsedRemainder": [],
   "trip": {
     "title": "Kyoto in 4 Days",
     "summary": "Old-Japan atmosphere arc: gates at dawn, bamboo by noon, tea at dusk.",
@@ -337,7 +340,8 @@ ONE JSON schema, two kinds. `kind: "plan"` = a plan not yet executed (import tar
                     "itemKind": "shot",
                     "priority": "must",
                     "beforeLeaving": false,
-                    "sourceLine": "- MUST: walk-in shot through the first torii (low angle)"
+                    "sourceLine": "- MUST: walk-in shot through the first torii (low angle)",
+                    "synthetic": false
                   },
                   {
                     "title": "Ambient: morning birds + footsteps on stone",
@@ -391,6 +395,8 @@ Populated on export of a completed trip. Keyed by stable ids assigned at export 
 | `schemaVersion` | integer | yes | see §6.4 |
 | `kind` | string | yes | `plan` \| `guide` |
 | `generator` | string | yes | producing app/tier, free-form |
+| `sourceText` | string | yes | the full pasted/shared text, verbatim — home of invariant 1 in [docs/06-import-spec.md](06-import-spec.md) (the shootList artifact `body` may carry the same markdown for display) |
+| `unparsedRemainder` | array of string | no | source lines no tier could place — tier contract rule 2 in [docs/06-import-spec.md](06-import-spec.md); empty when every line is accounted for |
 | `trip.title` / `trip.summary` | string | yes / no | |
 | `trip.brief.*` | string | no | raw values of the four brief enums |
 | `trip.artifacts[]` | array | no | `kind` (`ideas` \| `shootList` \| `script`), `title`, `body` (markdown) |
@@ -406,6 +412,7 @@ Populated on export of a completed trip. Keyed by stable ids assigned at export 
 | `…items[].itemKind` | string | yes | `shot` \| `voice` \| `sound` \| `transition` \| `note` |
 | `…items[].priority` | string | yes | `must` \| `optional` |
 | `…items[].beforeLeaving` | bool | no | default false |
+| `…items[].synthetic` | bool | no | default false; **required `true` when `sourceLine` is absent** (auto leaving-transition, tier-invented items) — the explicit synthetic marker of contract rule 3 / invariant 2 in [docs/06-import-spec.md](06-import-spec.md), enforced at document validation |
 | `execution` | object\|null | yes | null for `kind: plan`; §6.2 shape for `kind: guide` |
 
 ### 6.4 Versioning rules

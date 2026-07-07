@@ -1,0 +1,16 @@
+{
+  "fixtureClass": "chatgpt-template",
+  "expectedDayCount": 1,
+  "stageCount": { "min": 2, "max": 2 },
+  "expectedStopTitles": ["Fushimi Inari Taisha"],
+  "expectedGeoAnchors": ["68 Fukakusa Yabunouchicho, Fushimi Ward, Kyoto, 612-0882"],
+  "expectedKinds": {
+    "Morning footsteps": "sound",
+    "What changed after sunrise": "voice"
+  },
+  "expectedPriorities": {
+    "Morning footsteps": "optional",
+    "Low torii walk-in": "must"
+  },
+  "expectedBeforeLeavingTitles": ["What changed after sunrise"]
+}

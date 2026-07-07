@@ -30,7 +30,7 @@ Use this table to avoid confusing the current prototype with the target architec
 
 When sources conflict, resolve in this order. State conflicts explicitly in your change description; never silently pick one.
 
-1. **AGENTS.md** governs **how** agents work (conduct, tooling discipline, hard bans such as background execution/location without an explicit product requirement — see AGENTS.md:22 and [docs/adr/ADR-0007-while-in-use-location-surfacing.md](adr/ADR-0007-while-in-use-location-surfacing.md)). It always wins on conduct.
+1. **AGENTS.md** governs **how** agents work (conduct, tooling discipline, hard bans such as background execution/location without an explicit product requirement — see AGENTS.md:30 and [docs/adr/ADR-0007-while-in-use-location-surfacing.md](adr/ADR-0007-while-in-use-location-surfacing.md)). It always wins on conduct.
 2. **docs/** governs **what** to build. Each topic has exactly one owner doc (see the map below); other docs link to it rather than restating it.
 3. **[docs/08-roadmap.md](08-roadmap.md)** governs what to build **now**. If a spec exists in docs/ but the current phase does not call for it, do not build it.
 4. **Phase non-goals beat everything.** If the current phase in docs/08 lists something as a non-goal, do not implement it even if another doc specifies it in detail.

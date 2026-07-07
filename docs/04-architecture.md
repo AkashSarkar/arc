@@ -82,13 +82,13 @@ Entry: `ImportPlanFlowView.swift` (Shoots feature).
 2. `ImportedPlanParser` (T0 heuristic) parses it into a staged `FieldGuideDraft` (`FieldGuideStageDraft` with `goal`, `FieldGuideItemDraft`s).
 3. Optionally, `ImportedPlanGenerator` (T2 cloud) sends the text through `AIServicing` for cleanup → JSON → draft; on failure it falls back to the T0 parser.
 4. User edits the draft (stage titles, goals, items, priorities).
-5. Commit (`ImportPlanFlowView.swift:304` onward) creates a placeholder `ShootLocation(name: title, latitude: 0, longitude: 0)`, a `ShootPlan` with `source: .importedText`, and flattened `ShootPlanItem`s. Known defects: the stage `goal` edited in step 4 is dropped at commit (item loop at `ImportPlanFlowView.swift:327-350` never writes it; `ShootPlanItem` has no goal field), and the 0/0 placeholder location pollutes location-scoped features. P0 fixes these as stopgaps: persist a transitional `stageGoal` and require a picked real location before commit. P2 fixes them structurally with `Stage.goal` and optional `Stop` coordinates — see [docs/08-roadmap.md](08-roadmap.md), [docs/05-data-model.md](05-data-model.md), and [docs/06-import-spec.md](06-import-spec.md).
+5. Commit (`ImportPlanFlowView.swift:480-555`) requires a picked real location (guard at `:481`) and builds the `ShootLocation` from the picked coordinates (`:495-499`), then creates a `ShootPlan` with `source: .importedText` and flattened `ShootPlanItem`s; the item loop (`:522-545`) writes the stage `goal` edited in step 4 into the transitional `stageGoal` field (`:535`). Both P0 stopgaps (required location pick; transitional `stageGoal`) are implemented. P2 fixes both structurally with `Stage.goal` and optional `Stop` coordinates — see [docs/08-roadmap.md](08-roadmap.md), [docs/05-data-model.md](05-data-model.md), and [docs/06-import-spec.md](06-import-spec.md).
 
 The full T0–T3 tier ladder (heuristics → on-device Foundation Models → optional cloud → Private Cloud Compute) is specified in [docs/06-import-spec.md](06-import-spec.md).
 
 ### 1.6 Field execution and review
 
-- **Field execution** — `Arc/Features/Field/Presentation/FieldView.swift`: renders `plan.fieldStages` (computed grouping at `ShootPlan.swift:104`) one stage at a time with capture/skip/note/photo actions; `addSafetyNetItems()` at `FieldView.swift:533-568` appends 6 hardcoded Story Safety Net items with no dedup (fix specified in [docs/07-field-ux.md](07-field-ux.md)).
+- **Field execution** — `Arc/Features/Field/Presentation/FieldView.swift`: renders `plan.fieldStages` (computed grouping at `ShootPlan.swift:104`) one stage at a time with capture/skip/note/photo actions; `addSafetyNetItems()` at `FieldView.swift:533-577` appends the 6 hardcoded Story Safety Net items, skipping titles already unresolved in the current stage (P0 dedup guard at `:548-555`; structural fix specified in [docs/07-field-ux.md](07-field-ux.md)).
 - **Review** — `Arc/Features/Shoots/Presentation/CompletedShootView.swift`: segmented post-shoot review of execution data; export today is a plain-text `ShareLink` only (replaced by review/export v2 in P3 and `.arcguide` export in P4 — [docs/adr/ADR-0004-arcguide-document-interchange.md](adr/ADR-0004-arcguide-document-interchange.md)).
 
 ---
@@ -102,9 +102,9 @@ Phases and gates are defined in [docs/08-roadmap.md](08-roadmap.md); gate criter
 | P0 Stabilize | Unit test target (first tests: parsers, `fieldStages` grouping, safety-net dedup). No new app modules. |
 | P1 Import pipeline v2 + document format | `Arc/Core/Documents/` — `ArcPlanDocument` / `ArcGuideDocument` codecs (one JSON schema, `kind` plan \| guide, integer `schemaVersion`, UTType `com.arc.guide`, `.arcguide`; folder must never import SwiftData). `Arc/Services/AI/FoundationModelsPlanService.swift` — T1 on-device `@Generable` service, availability-gated via `SystemLanguageModel`, per-day chunking, prewarm on import screen, guardrail fallback to T0. Share extension target + App Group (receive text/files into the import flow). App Intents: `ImportPlanIntent`. |
 | P2 Schema v2 + timeline and map | `Arc/Features/Trips/` — Domain (Trip, TripArtifact, ShootDay, Stop, Stage, CaptureItem per [docs/05-data-model.md](05-data-model.md)) + Presentation (trip timeline, map from geo anchors). Store reset per [docs/adr/ADR-0003-store-reset-pre-ship.md](adr/ADR-0003-store-reset-pre-ship.md). |
-| P3 Field ergonomics v2 + review/export v2 | Live Activity extension (stage mantra on Lock Screen / Dynamic Island). While-in-use geofence service (scoped per [docs/adr/ADR-0007-while-in-use-location-surfacing.md](adr/ADR-0007-while-in-use-location-surfacing.md); AGENTS.md:22 amendment). Golden-hour nudge logic reusing `SunMoonCalculator`. |
+| P3 Field ergonomics v2 + review/export v2 | Live Activity extension (stage mantra on Lock Screen / Dynamic Island). While-in-use geofence service (scoped per [docs/adr/ADR-0007-while-in-use-location-surfacing.md](adr/ADR-0007-while-in-use-location-surfacing.md); AGENTS.md:30 amendment). Golden-hour nudge logic reusing `SunMoonCalculator`. |
 | P4 Guide export + share preview + email capture | `.arcguide` guide export from executed trips; off-app static preview page + email capture (see [docs/02-business.md](02-business.md) and [docs/adr/ADR-0006-email-capture-and-paid-guides.md](adr/ADR-0006-email-capture-and-paid-guides.md)). |
-| P5 Platform | Architecture only — see section 4. Gated on G4. |
+| P5 Platform | Architecture only — see section 4. Gated on G3 + G4. |
 
 ---
 
@@ -113,20 +113,20 @@ Phases and gates are defined in [docs/08-roadmap.md](08-roadmap.md); gate criter
 | Item | Evidence pointer | Retiring phase |
 |---|---|---|
 | Flickr reference images cached to disk but never displayed in any view | `Arc/Services/Enrichment/ReferenceImageCache.swift` (`DiskReferenceImageCache`), wired in `AppContainer.swift:39`; no consuming view | P3 — surface in field/review UI or retire the pipeline |
-| Plans reachable only via their `ShootLocation`; import flow forges 0/0 placeholder locations | `ImportPlanFlowView.swift:304`; one-plan-per-location shape in `ShootLocation.swift` | P0 requires a real picked location; P2 replaces location-as-root with Trip/Stop |
+| Plans reachable only via their `ShootLocation` (one-plan-per-location shape) | `ShootLocation.swift`; import commit now requires a picked real location (`ImportPlanFlowView.swift:495-499`) | P2 replaces location-as-root with Trip/Stop |
 | Stages computed by grouping items on `(stageOrderIndex, stageTitle)` on hot UI paths | `ShootPlan.swift:104` (`fieldStages`); re-evaluated per render in `FieldView` | P2 — Stage becomes a stored entity |
-| Stage `goal` editable in import UI but dropped at commit | `ImportPlanFlowView.swift:327-350`; `ShootPlanItem` has no goal field | P0 transitional `stageGoal`; P2 proper (`Stage.goal`) |
-| `ShootPlanItem.role` string redundant with `kind` | `ShootPlan.swift:166` (`role`) vs `:216` (`kind` from `kindRawValue`) | P2 — drop `role`, keep `CaptureItem` kind |
-| Hardcoded safety-net items appended without dedup | `FieldView.swift:533-568` (`addSafetyNetItems()`) | P0 fix guard; P3 proper Safety Net mechanics |
+| Stage `goal` denormalized per item as the transitional `stageGoal` stopgap (P0 implemented) | `ShootPlan.swift:173`; written in the commit item loop at `ImportPlanFlowView.swift:522-545` (`:535`) | P2 replaces with `Stage.goal` |
+| `ShootPlanItem.role` string redundant with `kind` | `ShootPlan.swift:168` (`role`) vs `:221` (`kind` from `kindRawValue`) | P2 — drop `role`, keep `CaptureItem` kind |
+| Hardcoded safety-net items (P0 dedup guard implemented — unresolved-title skip at `FieldView.swift:548-555`) | `FieldView.swift:533-577` (`addSafetyNetItems()`) | P0 guard done; P3 proper Safety Net mechanics |
 | No test target | Repo has no test targets or CI | P0 |
-| Raw-value enum fallback defaults mask data issues (bad stored strings silently become `.natural`, `.now`, `.shot`, …) | e.g. `ShootPlan.swift:92-98`, `:216-218` | P2 note — schema v2 must fail loudly or migrate explicitly |
+| Raw-value enum fallback defaults mask data issues (bad stored strings silently become `.natural`, `.now`, `.shot`, …) | e.g. `ShootPlan.swift:92-98`, `:221-223` | P2 note — schema v2 must fail loudly or migrate explicitly |
 | Reference-image cache has no TTL or size limit | `DiskReferenceImageCache` in `ReferenceImageCache.swift` | Backlog |
 
 ---
 
 ## 4. Platform (P5) sketch
 
-**Architecture only — do not build until G4 (see [docs/02-business.md](02-business.md)).** No off-app infrastructure exists today, and none is required through P3 ([docs/adr/ADR-0005-backend-deferred-cloudkit-first.md](adr/ADR-0005-backend-deferred-cloudkit-first.md)).
+**Architecture only — do not build until G3 + G4 (see [docs/02-business.md](02-business.md)).** No off-app infrastructure exists today, and none is required through P3 ([docs/adr/ADR-0005-backend-deferred-cloudkit-first.md](adr/ADR-0005-backend-deferred-cloudkit-first.md)).
 
 - **CloudKit-first candidate.** Private database for owner sync/backup of trips; `CKShare` / public database for shared guide previews. Zero server ops, native auth, free at this scale — right shape for a solo owner whose product is on-device. Weakness: web-side buyers and payments are awkward.
 - **Thin custom API counterweight.** Only if paid guides (G4, [docs/adr/ADR-0006-email-capture-and-paid-guides.md](adr/ADR-0006-email-capture-and-paid-guides.md)) demand web checkout/delivery to non-iOS buyers: a minimal endpoint set (guide fetch, purchase webhook, email capture) fronting `.arcguide` payloads. Never a sync engine; the app must keep working fully offline with the backend down.

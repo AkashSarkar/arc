@@ -545,14 +545,22 @@ struct FieldView: View {
             FieldGuideItemDraft(title: "Leaving shot", guidance: "Show yourself moving on from this place.", kind: .transition, priority: .must, isBeforeLeaving: true)
         ]
 
-        for (offset, draft) in drafts.enumerated() {
+        let unresolvedTitles = Set(
+            currentStage.items
+                .filter { !$0.isResolved }
+                .map { normalizedSafetyNetTitle($0.title) }
+        )
+        var appendedCount = 0
+
+        for draft in drafts where !unresolvedTitles.contains(normalizedSafetyNetTitle(draft.title)) {
             let item = ShootPlanItem(
-                orderIndex: nextOrderIndex + offset,
+                orderIndex: nextOrderIndex + appendedCount,
                 title: draft.title,
-                role: draft.kind.title,
+                role: "Safety Net",
                 guidance: draft.guidance,
                 stageTitle: currentStage.title,
                 stageOrderIndex: currentStage.orderIndex,
+                stageGoal: currentStage.goal,
                 kind: draft.kind,
                 priority: draft.priority,
                 isBeforeLeaving: draft.isBeforeLeaving,
@@ -560,6 +568,7 @@ struct FieldView: View {
             )
             modelContext.insert(item)
             plan.items.append(item)
+            appendedCount += 1
         }
 
         saveChanges()
@@ -569,6 +578,13 @@ struct FieldView: View {
 
     private func saveChanges() {
         try? modelContext.save()
+    }
+
+    private func normalizedSafetyNetTitle(_ title: String) -> String {
+        title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }
 
     private func compressedImageData(from data: Data) -> Data? {
@@ -640,6 +656,10 @@ private struct FieldExecutionHeader: View {
         }
 
         if let currentStage {
+            if !currentStage.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return currentStage.goal
+            }
+
             return "Current stage: \(currentStage.title)"
         }
 
@@ -700,6 +720,13 @@ private struct FieldStageNavigator: View {
                         .font(isHighContrast ? .title2.weight(.semibold) : .headline)
                         .foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if !stage.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Label(stage.goal, systemImage: "scope")
+                            .font(isHighContrast ? .body.weight(.medium) : .subheadline.weight(.medium))
+                            .foregroundStyle(isHighContrast ? .primary : .secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     Text("\(stage.resolvedCount)/\(stage.items.count) resolved")
                         .font(.subheadline)

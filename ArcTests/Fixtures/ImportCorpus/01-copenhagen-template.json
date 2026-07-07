@@ -1,0 +1,17 @@
+{
+  "fixtureClass": "chatgpt-template",
+  "expectedDayCount": 2,
+  "stageCount": { "min": 4, "max": 4 },
+  "expectedStopTitles": ["Nyhavn Harbor", "Reffen Street Food"],
+  "expectedGeoAnchors": ["https://maps.google.com/?q=Nyhavn,+Copenhagen", "https://maps.app.goo.gl/abc123"],
+  "expectedKinds": {
+    "First impression line to camera": "voice",
+    "Ambient harbor audio": "sound",
+    "Leaving transition": "transition"
+  },
+  "expectedPriorities": {
+    "Ambient harbor audio": "optional",
+    "Vendor flames close-up": "must"
+  },
+  "expectedBeforeLeavingTitles": ["Leaving transition"]
+}

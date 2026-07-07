@@ -91,7 +91,7 @@ If a new fixture drops a class below its phase threshold, that is a real parser 
 
 Ported from the pre-docs README; README now links here instead of carrying its own copy. Run the full checklist after any UX or persistence change, on a physical device when field behavior is involved.
 
-1. Empty launch shows Capture Plans and a New Location Plan / Import Plan CTA.
+1. Empty launch shows Capture Plans with Import Plan as the primary CTA and New Location Plan as the secondary CTA.
 2. New Location Plan defaults to current GPS and still supports search and map pin.
 3. Invalid custom timing blocks progress before generation.
 4. Generate fetches context and produces a reviewable draft.

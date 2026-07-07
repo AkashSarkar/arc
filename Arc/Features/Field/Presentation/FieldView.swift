@@ -15,7 +15,6 @@ struct FieldView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("Arc.FieldHighContrastMode") private var isHighContrastMode = false
     @State private var selectedStopID: UUID?
-    @State private var cacheStatus = ReferenceImageCacheResult(totalImages: 0, cachedImages: 0)
     @State private var isPresentingInfo = false
     @State private var isPresentingPlanEditor = false
     @State private var isPresentingEditLocation = false
@@ -72,7 +71,6 @@ struct FieldView: View {
                     trip: trip,
                     stop: selectedStop,
                     stage: currentStage,
-                    referenceStatus: referenceStatusText,
                     isHighContrast: isHighContrastMode
                 )
 
@@ -309,11 +307,6 @@ struct FieldView: View {
         .task {
             activateTripIfNeeded()
         }
-        .task(id: selectedStop?.id) {
-            if let selectedStop {
-                cacheStatus = referenceImageCache.cacheStatus(for: selectedStop)
-            }
-        }
     }
 
     private var fieldActionBar: some View {
@@ -338,14 +331,6 @@ struct FieldView: View {
                 ArcSceneBackground()
             }
         }
-    }
-
-    private var referenceStatusText: String {
-        guard cacheStatus.totalImages > 0 else {
-            return "No offline refs"
-        }
-
-        return "\(cacheStatus.cachedImages)/\(cacheStatus.totalImages) refs"
     }
 
     private var finishDialogMessage: String {
@@ -715,15 +700,14 @@ private struct FieldExecutionHeader: View {
     let trip: Trip
     let stop: Stop?
     let stage: Stage?
-    let referenceStatus: String
     let isHighContrast: Bool
 
     var body: some View {
-        ArcHeroHeader(
+        ArcCompactHeroHeader(
             systemImage: "camera.viewfinder",
             title: trip.title,
-            subtitle: summary,
-            badges: badges
+            summary: summary,
+            tint: isHighContrast ? .white : ArcPalette.tint
         )
         .accessibilityElement(children: .combine)
     }
@@ -734,14 +718,6 @@ private struct FieldExecutionHeader: View {
         }
 
         return trip.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Work each stop, stage, and must-get item." : trip.summary
-    }
-
-    private var badges: [ArcHeroBadge] {
-        [
-            ArcHeroBadge(label: "\(trip.resolvedCount)/\(trip.allItems.count)", systemImage: "checkmark.circle"),
-            ArcHeroBadge(label: "\(trip.orderedStops.count) stops", systemImage: "map"),
-            ArcHeroBadge(label: referenceStatus, systemImage: "arrow.down.circle")
-        ]
     }
 }
 

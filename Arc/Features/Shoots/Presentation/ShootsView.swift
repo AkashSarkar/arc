@@ -43,36 +43,17 @@ struct ShootsView: View {
         }
     }
 
-    private var heroBadges: [ArcHeroBadge] {
-        [
-            ArcHeroBadge(label: "\(activeTrips.count) active", systemImage: "checklist"),
-            ArcHeroBadge(label: "\(completedTrips.count) completed", systemImage: "checkmark.seal")
-        ]
-    }
-
     var body: some View {
         List {
-            Section {
-                ArcHeroHeader(
-                    systemImage: "camera.aperture",
-                    title: "Capture Plans",
-                    subtitle: rootSubtitle,
-                    badges: heroBadges
-                )
-                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 12, trailing: 0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
-
             Section {
                 ShootsSegmentControl(
                     selection: $selectedSegment,
                     activeCount: activeTrips.count,
                     completedCount: completedTrips.count
                 )
-                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
 
             if displayedTrips.isEmpty {
@@ -83,7 +64,7 @@ struct ShootsView: View {
                         .listRowSeparator(.hidden)
                 }
             } else {
-                Section(selectedSegment.title) {
+                Section {
                     ForEach(displayedTrips) { trip in
                         switch selectedSegment {
                         case .active:
@@ -140,7 +121,8 @@ struct ShootsView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 1)
         .scrollContentBackground(.hidden)
         .background(ArcSceneBackground())
         .navigationTitle("Capture Plans")
@@ -157,17 +139,17 @@ struct ShootsView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
-                        isPresentingNewShoot = true
-                    } label: {
-                        Label("New Location Plan", systemImage: "mappin.and.ellipse")
-                    }
-
-                    Button {
                         pendingImportText = ""
                         pendingImportDocument = nil
                         isPresentingImport = true
                     } label: {
                         Label("Import Existing Plan", systemImage: "square.and.arrow.down")
+                    }
+
+                    Button {
+                        isPresentingNewShoot = true
+                    } label: {
+                        Label("New Location Plan", systemImage: "mappin.and.ellipse")
                     }
                 } label: {
                     Image(systemName: "plus")
@@ -240,24 +222,6 @@ struct ShootsView: View {
         }
     }
 
-    private var rootSubtitle: String {
-        if let nextTrip = activeTrips.first {
-            if let stage = nextTrip.currentStage, let stop = nextTrip.activeStop {
-                return "Next stage: \(stage.title) at \(stop.name)."
-            }
-
-            if let nextItem = nextTrip.allItems.first(where: { !$0.isResolved }), let stop = nextItem.stage?.stop {
-                return "Next up: \(nextItem.title) at \(stop.name)."
-            }
-        }
-
-        if !activeTrips.isEmpty {
-            return "Open an active trip and keep the field guide moving."
-        }
-
-        return "Create or import a capture plan, then work it in the field."
-    }
-
     private var createdTrip: Trip? {
         guard let createdTripID else {
             return nil
@@ -270,57 +234,33 @@ struct ShootsView: View {
     private var emptyState: some View {
         switch selectedSegment {
         case .active:
-            ArcFeatureCard(accent: ArcPalette.tint) {
+            ArcDenseCard(accent: ArcPalette.tint) {
                 ArcFeatureTitle(
-                    systemImage: "plus.circle",
-                    title: "Start your first capture plan",
-                    subtitle: "Pick a place or import a trip plan you already wrote."
+                    systemImage: "square.and.arrow.down",
+                    title: "Import a trip plan",
+                    subtitle: "Paste or open the plan you already wrote."
                 )
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        Button {
-                            isPresentingNewShoot = true
-                        } label: {
-                            Label("New Location Plan", systemImage: "mappin.and.ellipse")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glassProminent)
-
-                        Button {
-                            pendingImportText = ""
-                            pendingImportDocument = nil
-                            isPresentingImport = true
-                        } label: {
-                            Label("Import Plan", systemImage: "square.and.arrow.down")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glass)
-                    }
-
-                    VStack(spacing: 10) {
-                        Button {
-                            isPresentingNewShoot = true
-                        } label: {
-                            Label("New Location Plan", systemImage: "mappin.and.ellipse")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glassProminent)
-
-                        Button {
-                            pendingImportText = ""
-                            pendingImportDocument = nil
-                            isPresentingImport = true
-                        } label: {
-                            Label("Import Plan", systemImage: "square.and.arrow.down")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glass)
-                    }
+                Button {
+                    pendingImportText = ""
+                    pendingImportDocument = nil
+                    isPresentingImport = true
+                } label: {
+                    Label("Import Plan", systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.glassProminent)
+
+                Button {
+                    isPresentingNewShoot = true
+                } label: {
+                    Label("New Location Plan", systemImage: "mappin.and.ellipse")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
             }
         case .completed:
-            ArcFeatureCard(accent: ArcPalette.glowSecondary) {
+            ArcDenseCard(accent: ArcPalette.glowSecondary) {
                 ArcFeatureTitle(
                     systemImage: "archivebox",
                     title: "No completed plans yet",
@@ -398,14 +338,6 @@ private enum ShootSegment: String, CaseIterable, Identifiable {
         }
     }
 
-    var systemImage: String {
-        switch self {
-        case .active:
-            return "checklist"
-        case .completed:
-            return "checkmark.seal"
-        }
-    }
 }
 
 private struct ShootsSegmentControl: View {
@@ -414,59 +346,12 @@ private struct ShootsSegmentControl: View {
     let completedCount: Int
 
     var body: some View {
-        HStack(spacing: 8) {
-            segmentButton(.active, count: activeCount)
-            segmentButton(.completed, count: completedCount)
+        Picker("Plan status", selection: $selection) {
+            Text("Active (\(activeCount))").tag(ShootSegment.active)
+            Text("Completed (\(completedCount))").tag(ShootSegment.completed)
         }
-        .padding(6)
-        .background(ArcPalette.surfaceFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .glassEffect(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-        }
-        .accessibilityElement(children: .contain)
+        .pickerStyle(.segmented)
         .accessibilityLabel("Capture plan status")
-    }
-
-    private func segmentButton(_ segment: ShootSegment, count: Int) -> some View {
-        let isSelected = selection == segment
-        let tint = segment == .active ? ArcPalette.tint : ArcPalette.glowSecondary
-
-        return Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                selection = segment
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: segment.systemImage)
-                    .font(.subheadline.weight(.semibold))
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(segment.title)
-                        .font(.subheadline.weight(.semibold))
-
-                    Text("\(count)")
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(isSelected ? tint : .secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-            .background(
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .fill(isSelected ? tint.opacity(0.16) : Color.clear)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .stroke(isSelected ? tint.opacity(0.42) : Color.clear, lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -477,16 +362,29 @@ private struct ShootsActiveRow: View {
         "\(trip.resolvedCount)/\(trip.allItems.count)"
     }
 
-    private var nextTitle: String {
-        if let stage = trip.currentStage {
-            return stage.title
+    private var progress: Double {
+        guard !trip.allItems.isEmpty else {
+            return 0
         }
 
-        if let next = trip.allItems.first(where: { !$0.isResolved }) {
-            return next.title
+        return Double(trip.resolvedCount) / Double(trip.allItems.count)
+    }
+
+    private var nextLine: String {
+        if let stage = trip.currentStage, let stop = trip.activeStop {
+            return "\(stop.name) - \(stage.title)"
+        }
+
+        if let next = trip.allItems.first(where: { !$0.isResolved }),
+           let stop = next.stage?.stop {
+            return "\(stop.name) - \(next.title)"
         }
 
         return "Ready to complete"
+    }
+
+    private var detailLine: String {
+        "\(trip.orderedStops.count) stops - \(trip.missingCount) remaining"
     }
 
     var body: some View {
@@ -498,10 +396,15 @@ private struct ShootsActiveRow: View {
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
-                    Label(nextTitle, systemImage: "camera.viewfinder")
+                    Label(nextLine, systemImage: "camera.viewfinder")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
+
+                    Text(detailLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -509,24 +412,23 @@ private struct ShootsActiveRow: View {
                     .monospacedDigit()
             }
 
-            FieldProgressBar(progress: trip.allItems.isEmpty ? 0 : Double(trip.resolvedCount) / Double(trip.allItems.count))
+            FieldProgressBar(progress: progress)
                 .frame(height: 7)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ArcStatusPill("\(trip.orderedStops.count) stops", systemImage: "map", tint: ArcPalette.glowSecondary)
-                    ArcStatusPill("\(trip.allStages.count) stages", systemImage: "rectangle.stack", tint: ArcPalette.glowPrimary)
-                    ArcStatusPill(trip.outputIntent.title, systemImage: "square.stack.3d.up")
-                    ArcStatusPill(trip.captureMedium.title, systemImage: "camera", tint: ArcPalette.tint)
-                    ArcStatusPill(trip.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.glowPrimary)
-                }
-            }
         }
     }
 }
 
 private struct ShootsCompletedRow: View {
     let trip: Trip
+
+    private var resolvedText: String {
+        "\(trip.resolvedCount)/\(trip.allItems.count)"
+    }
+
+    private var detailLine: String {
+        let skipped = trip.skippedCount == 0 ? "none skipped" : "\(trip.skippedCount) skipped"
+        return "\(trip.capturedCount) captured - \(skipped)"
+    }
 
     var body: some View {
         ArcDenseCard(accent: ArcPalette.glowSecondary) {
@@ -541,20 +443,16 @@ private struct ShootsCompletedRow: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+
+                    Text(detailLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(ArcPalette.glowSecondary)
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ArcStatusPill("\(trip.capturedCount)/\(trip.allItems.count)", systemImage: "checkmark.circle", tint: ArcPalette.tint)
-                    ArcStatusPill("\(trip.skippedCount) skipped", systemImage: "forward.end", tint: ArcPalette.glowSecondary)
-                    ArcStatusPill(trip.targetPlatform.title, systemImage: "paperplane", tint: ArcPalette.tint)
-                    ArcStatusPill(trip.stylePreset.title, systemImage: "camera.filters", tint: ArcPalette.glowPrimary)
-                }
+                ArcStatusPill(resolvedText, systemImage: "checkmark.circle", tint: ArcPalette.glowSecondary)
+                    .monospacedDigit()
             }
         }
     }

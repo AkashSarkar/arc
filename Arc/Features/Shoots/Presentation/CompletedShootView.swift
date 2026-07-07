@@ -42,28 +42,12 @@ struct CompletedShootView: View {
                         accent: ArcPalette.glowSecondary
                     )
 
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 10) {
-                            ArcMetricTile(title: "Planned", value: "\(trip.allItems.count)", systemImage: "checklist", accent: ArcPalette.glowSecondary)
-                            ArcMetricTile(title: "Captured", value: "\(trip.capturedCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
-                            ArcMetricTile(title: "Skipped", value: "\(trip.skippedCount)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
-                            ArcMetricTile(title: "Missing", value: "\(trip.missingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
-                        }
-
-                        VStack(spacing: 10) {
-                            ArcMetricTile(title: "Planned", value: "\(trip.allItems.count)", systemImage: "checklist", accent: ArcPalette.glowSecondary)
-                            ArcMetricTile(title: "Captured", value: "\(trip.capturedCount)", systemImage: "checkmark.circle", accent: ArcPalette.tint)
-                            ArcMetricTile(title: "Skipped", value: "\(trip.skippedCount)", systemImage: "forward.circle", accent: ArcPalette.glowSecondary)
-                            ArcMetricTile(title: "Missing", value: "\(trip.missingCount)", systemImage: "circle.dashed", accent: ArcPalette.glowPrimary)
-                        }
-                    }
+                    CompletedCoverageStrip(trip: trip)
                 }
-
-                StoryCompletenessCard(trip: trip)
 
                 if let script = trip.artifacts.first(where: { $0.kind == .script }),
                    !script.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    ArcFeatureCard(accent: ArcPalette.tint) {
+                    ArcDenseCard(accent: ArcPalette.tint) {
                         ArcFeatureTitle(
                             systemImage: "text.quote",
                             title: "Editing Script",
@@ -85,7 +69,7 @@ struct CompletedShootView: View {
                 }
                 .pickerStyle(.segmented)
 
-                ArcFeatureCard(accent: selectedSection.accent) {
+                ArcDenseCard(accent: selectedSection.accent) {
                     ArcFeatureTitle(
                         systemImage: selectedSection.systemImage,
                         title: selectedSection.title,
@@ -221,6 +205,40 @@ struct CompletedShootView: View {
     }
 }
 
+private struct CompletedCoverageStrip: View {
+    let trip: Trip
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                metric("Captured", "\(trip.capturedCount)")
+                metric("Skipped", "\(trip.skippedCount)")
+                metric("Missing", "\(trip.missingCount)")
+                metric("Total", "\(trip.allItems.count)")
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                metric("Captured", "\(trip.capturedCount)")
+                metric("Skipped", "\(trip.skippedCount)")
+                metric("Missing", "\(trip.missingCount)")
+                metric("Total", "\(trip.allItems.count)")
+            }
+        }
+    }
+
+    private func metric(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.title3.monospacedDigit().weight(.semibold))
+                .foregroundStyle(ArcPalette.tint)
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct CompletedShotRow: View {
     let systemImage: String
     let item: CaptureItem
@@ -236,8 +254,11 @@ private struct CompletedShotRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 14) {
-                ArcMiniIconBadge(systemImage: systemImage, tint: tint)
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 24, height: 24)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.title)
@@ -262,109 +283,8 @@ private struct CompletedShotRow: View {
                     .resizable()
                     .scaledToFill()
                     .frame(height: 128)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-        }
-    }
-}
-
-private struct StoryCompletenessCard: View {
-    let trip: Trip
-
-    private var capturedItems: [CaptureItem] {
-        trip.allItems.filter(\.isCaptured)
-    }
-
-    var body: some View {
-        ArcDenseCard(accent: ArcPalette.tint) {
-            ArcFeatureTitle(
-                systemImage: "film.stack",
-                title: "Story Completeness",
-                subtitle: trip.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : trip.summary,
-                accent: ArcPalette.tint
-            )
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    metric("Beginning", hasBeginning, "1.circle")
-                    metric("Middle", hasMiddle, "2.circle")
-                    metric("Ending", hasEnding, "3.circle")
-                }
-
-                VStack(spacing: 10) {
-                    metric("Beginning", hasBeginning, "1.circle")
-                    metric("Middle", hasMiddle, "2.circle")
-                    metric("Ending", hasEnding, "3.circle")
-                }
-            }
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    metric("Transitions", hasTransition, "arrow.triangle.swap")
-                    metric("Voice/Sound", hasVoiceOrSound, "waveform")
-                }
-
-                VStack(spacing: 10) {
-                    metric("Transitions", hasTransition, "arrow.triangle.swap")
-                    metric("Voice/Sound", hasVoiceOrSound, "waveform")
-                }
-            }
-        }
-    }
-
-    private var hasBeginning: Bool {
-        capturedItems.contains { item in
-            item.stage?.orderIndex == 0
-                || item.title.localizedCaseInsensitiveContains("begin")
-                || item.title.localizedCaseInsensitiveContains("start")
-                || item.title.localizedCaseInsensitiveContains("establish")
-        }
-    }
-
-    private var hasMiddle: Bool {
-        capturedItems.count >= max(2, trip.allItems.count / 3)
-    }
-
-    private var hasEnding: Bool {
-        capturedItems.contains { item in
-            item.title.localizedCaseInsensitiveContains("ending")
-                || item.title.localizedCaseInsensitiveContains("final")
-                || item.title.localizedCaseInsensitiveContains("reflection")
-                || item.kind == .transition && item.isBeforeLeaving
-        }
-    }
-
-    private var hasTransition: Bool {
-        capturedItems.contains { $0.kind == .transition }
-    }
-
-    private var hasVoiceOrSound: Bool {
-        capturedItems.contains { $0.kind == .voice || $0.kind == .sound }
-    }
-
-    private func metric(_ title: String, _ isComplete: Bool, _ systemImage: String) -> some View {
-        HStack(spacing: 10) {
-            ArcMiniIconBadge(systemImage: isComplete ? "checkmark.circle" : systemImage, tint: isComplete ? ArcPalette.tint : ArcPalette.glowPrimary)
-                .scaleEffect(0.82)
-                .frame(width: 34, height: 34)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Text(isComplete ? "Covered" : "Gap")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isComplete ? ArcPalette.tint : ArcPalette.glowPrimary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }
 }

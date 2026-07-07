@@ -136,7 +136,7 @@ struct ImportPlanFlowView: View {
 
     private var setupSection: some View {
         Section {
-            ArcFeatureCard(accent: ArcPalette.tint) {
+            ArcDenseCard(accent: ArcPalette.tint) {
                 ArcFeatureTitle(
                     systemImage: "square.and.arrow.down",
                     title: "Import Existing Plan",
@@ -180,7 +180,7 @@ struct ImportPlanFlowView: View {
 
     private var draftSection: some View {
         Section {
-            ArcFeatureCard(accent: ArcPalette.glowSecondary) {
+            ArcDenseCard(accent: ArcPalette.glowSecondary) {
                 ArcFeatureTitle(
                     systemImage: "rectangle.stack",
                     title: "Field Stages",
@@ -232,10 +232,9 @@ struct ImportPlanFlowView: View {
     }
 
     private var importActionGrid: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 142), spacing: 10)], spacing: 10) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
             pasteButton
             rebuildButton
-            smartParseButton
             templateButton
         }
     }
@@ -258,20 +257,10 @@ struct ImportPlanFlowView: View {
         Button {
             rebuildLocalDraft()
         } label: {
-            ImportPlanActionLabel(title: "Parse", systemImage: "arrow.clockwise")
+            ImportPlanActionLabel(title: "Parse Text", systemImage: "arrow.clockwise")
         }
         .buttonStyle(.glass)
         .disabled(planText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-    }
-
-    private var smartParseButton: some View {
-        Button {
-            Task { await parseWithBestTier(allowCloud: false) }
-        } label: {
-            ImportPlanActionLabel(title: "Smart", systemImage: "brain")
-        }
-        .buttonStyle(.glass)
-        .disabled(!canImproveWithAI || isImprovingWithAI || isCommitting)
     }
 
     private var templateButton: some View {
@@ -279,7 +268,7 @@ struct ImportPlanFlowView: View {
             UIPasteboard.general.string = ArcPlanTemplate.text
             parseNotice = "ChatGPT template copied."
         } label: {
-            ImportPlanActionLabel(title: "Template", systemImage: "doc.on.doc")
+            ImportPlanActionLabel(title: "Copy Template", systemImage: "doc.on.doc")
         }
         .buttonStyle(.glass)
     }

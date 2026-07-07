@@ -86,25 +86,11 @@ enum ArcPalette {
 
 struct ArcSceneBackground: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [ArcPalette.backgroundTop, ArcPalette.backgroundBottom],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(ArcPalette.glowPrimary.opacity(0.34))
-                .frame(width: 280, height: 280)
-                .blur(radius: 80)
-                .offset(x: -120, y: -240)
-
-            Circle()
-                .fill(ArcPalette.glowSecondary.opacity(0.26))
-                .frame(width: 320, height: 320)
-                .blur(radius: 96)
-                .offset(x: 140, y: 220)
-        }
+        LinearGradient(
+            colors: [ArcPalette.backgroundTop, ArcPalette.backgroundBottom],
+            startPoint: .top,
+            endPoint: .bottom
+        )
         .ignoresSafeArea()
     }
 }
@@ -125,7 +111,7 @@ struct ArcHeroHeader<Content: View>: View {
     var badges: [ArcHeroBadge] = []
     @ViewBuilder private let content: Content
 
-    private let cardShape = RoundedRectangle(cornerRadius: 32, style: .continuous)
+    private let cardShape = RoundedRectangle(cornerRadius: 18, style: .continuous)
 
     init(
         systemImage: String,
@@ -182,21 +168,13 @@ struct ArcHeroHeader<Content: View>: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(24)
-        .background(alignment: .topTrailing) {
-            Circle()
-                .fill(ArcPalette.glowPrimary.opacity(0.24))
-                .frame(width: 140, height: 140)
-                .blur(radius: 32)
-                .offset(x: 28, y: -30)
-        }
+        .padding(20)
         .background(ArcPalette.surfaceFill, in: cardShape)
         .glassEffect(in: cardShape)
         .overlay {
             cardShape
                 .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
-        .shadow(color: Color.black.opacity(0.08), radius: 20, y: 12)
     }
 }
 
@@ -206,7 +184,7 @@ struct ArcCompactHeroHeader: View {
     let summary: String?
     var tint: Color = ArcPalette.tint
 
-    private let cardShape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+    private let cardShape = RoundedRectangle(cornerRadius: 14, style: .continuous)
 
     var body: some View {
         HStack(spacing: 12) {
@@ -243,7 +221,7 @@ struct ArcFeatureCard<Content: View>: View {
     let accent: Color
     @ViewBuilder let content: Content
 
-    private let cardShape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+    private let cardShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
 
     init(accent: Color = ArcPalette.tint, @ViewBuilder content: () -> Content) {
         self.accent = accent
@@ -255,19 +233,12 @@ struct ArcFeatureCard<Content: View>: View {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
+        .padding(16)
         .background(ArcPalette.surfaceFill, in: cardShape)
         .glassEffect(in: cardShape)
         .overlay {
             cardShape
                 .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
-        }
-        .background(alignment: .topTrailing) {
-            Circle()
-                .fill(accent.opacity(0.18))
-                .frame(width: 120, height: 120)
-                .blur(radius: 26)
-                .offset(x: 26, y: -24)
         }
     }
 }
@@ -276,7 +247,7 @@ struct ArcDenseCard<Content: View>: View {
     let accent: Color
     @ViewBuilder let content: Content
 
-    private let cardShape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+    private let cardShape = RoundedRectangle(cornerRadius: 14, style: .continuous)
 
     init(accent: Color = ArcPalette.tint, @ViewBuilder content: () -> Content) {
         self.accent = accent
@@ -306,7 +277,7 @@ struct ArcDenseCard<Content: View>: View {
 struct ArcInlinePanel<Content: View>: View {
     @ViewBuilder let content: Content
 
-    private let panelShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+    private let panelShape = RoundedRectangle(cornerRadius: 12, style: .continuous)
 
     init(@ViewBuilder content: () -> Content) {
         self.content = content()
@@ -384,9 +355,9 @@ struct ArcMetricTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(ArcPalette.elevatedSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
     }

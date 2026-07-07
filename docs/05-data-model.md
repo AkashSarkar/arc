@@ -17,6 +17,7 @@ Schema v2 is now the app's active SwiftData model on the owner-test MVP branch:
 - Import and `.arcguide` documents map through [Arc/Features/Trips/Domain/TripDocumentMapper.swift](../Arc/Features/Trips/Domain/TripDocumentMapper.swift).
 - The retired v1 root types `ShootLocation`, `ShootPlan`, `ShootPlanItem`, and `PlanViewModel` are deleted.
 - Coordinates are optional on `Stop`; unresolved imported stops keep `sourceGeoAnchor` and render as needing location instead of fabricating `0,0`.
+- Imported-plan commit does not require a fallback picked location; location picking remains only in the manual single-stop "New Location Plan" flow.
 - Completed trips generate a `TripArtifact(kind: script)` and can export a structured `ArcGuideDocument`.
 
 The v1 notes below are historical context for old→new mapping only.

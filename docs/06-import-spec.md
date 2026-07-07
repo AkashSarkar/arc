@@ -12,13 +12,13 @@ This doc is normative for everything between "owner has a trip plan somewhere" a
 
 | # | Input | Mechanism | Phase | Implementation notes |
 |---|-------|-----------|-------|----------------------|
-| 1 | Paste | SwiftUI `PasteButton` (add it; current flow uses a plain `TextEditor` in `Arc/Features/Shoots/Presentation/ImportPlanFlowView.swift`) | P0 exists, P1 polish | `PasteButton` avoids the paste-permission prompt and takes `String.self` payloads. Keep the manual text editor as a secondary path for editing before parse. |
+| 1 | Paste | SwiftUI `PasteButton` plus editable `TextEditor` in `Arc/Features/Shoots/Presentation/ImportPlanFlowView.swift` | P0 exists, P1 polish | `PasteButton` avoids the paste-permission prompt and takes `String.self` payloads. Keep the manual text editor as a secondary path for editing before parse. |
 | 2 | Share sheet | Share extension accepting plain text, `.md`, `.txt`, and PDF | P1 | Extension does NOT parse. It extracts a raw string (PDF: `PDFKit` text extraction; if a page yields no text layer, run Vision `VNRecognizeTextRequest` OCR on the rendered page), writes the payload to the App Group container, then deep-links into the main app. Share extensions have a hard low memory ceiling — all tier parsing (T0/T1/T2) runs in the MAIN app only. |
 | 3 | Open in Arc | Declare document types for `public.plain-text`, markdown (`net.daringfireball.markdown`), `com.adobe.pdf` | P1 | Enables Files, Mail attachments, and Apple Notes iOS 26 Markdown export ("Export as Markdown" -> share -> Arc). Same handoff path as row 2: raw text into the main-app import flow. |
 | 4 | App Intent | `ImportPlanIntent` with an `AttributedString` parameter | P1 | Powers the documented **"Send Note to Arc"** Shortcuts recipe below. Plain-text the attributed string, then feed the normal pipeline. |
 | 5 | `.arcguide` file | `UTType com.arc.guide` document open | P1+ | Already-structured `ArcPlanDocument` JSON — skips parsing entirely. See [adr/ADR-0004-arcguide-document-interchange.md](adr/ADR-0004-arcguide-document-interchange.md). |
 
-Owner-test MVP status (2026-07-07): the main app can decode both `kind: plan` and `kind: guide` documents through `ArcDocumentCodec.decodePlanOrGuide`, hand them to the import flow, and commit them directly into the schema-v2 `Trip` graph through `TripDocumentMapper`. The off-app web preview and email capture path are still gated P4 work.
+Owner-test MVP status (2026-07-07): the main app can decode both `kind: plan` and `kind: guide` documents through `ArcDocumentCodec.decodePlanOrGuide`, hand them to the import flow, and commit them directly into the schema-v2 `Trip` graph through `TripDocumentMapper`. The import screen opens directly on the plan editor; it must not require choosing a fallback location before commit. Unresolved imported stops stay unresolved with their `sourceGeoAnchor` until the owner resolves them in the stop info/editor flow. The off-app web preview and email capture path are still gated P4 work.
 
 **Apple Notes, plainly:** there is NO public Apple Notes API and none is coming (Apple TN3132 says to use App Intents/Shortcuts instead). Do not plan, estimate, or stub a Notes importer. The Shortcuts bridge is the only real Notes integration:
 
@@ -205,7 +205,7 @@ Pipeline output feeds the draft/edit/commit flow (`ImportPlanFlowView` today). C
 2. **Every item is traceable or marked synthetic.** `sourceLine` or synthetic marker — enforced at document validation, not by convention.
 3. **Geo anchors are preserved verbatim** into `Stop.sourceGeoAnchor`. No geocoding, no URL unshortening, no coordinate writes during parse. Never fabricate coordinates. Schema v2 makes `Stop.latitude` / `Stop.longitude` optional, so unresolved imported stops stay honest until the owner sets a precise location.
 4. **Import works fully offline via T0.** No spinner that depends on network or model download may block producing a draft.
-5. **Committing a draft is the only write to storage.** Parse, tier fallback, and draft editing are pure/in-memory. The current commit path maps `ArcPlanDocument` into `Trip -> ShootDay -> Stop -> Stage -> CaptureItem` and stores the original source as a `TripArtifact`.
+5. **Committing a draft is the only write to storage.** Parse, tier fallback, and draft editing are pure/in-memory. The current commit path maps `ArcPlanDocument` into `Trip -> ShootDay -> Stop -> Stage -> CaptureItem`, stores the original source as a `TripArtifact`, and does not ask for or fabricate fallback coordinates.
 
 ---
 

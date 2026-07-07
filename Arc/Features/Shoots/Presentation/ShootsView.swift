@@ -188,7 +188,6 @@ struct ShootsView: View {
         .sheet(isPresented: $isPresentingImport) {
             ImportPlanFlowView(
                 aiService: aiService,
-                locationEditorServices: locationEditorServices,
                 initialText: pendingImportText,
                 initialDocument: pendingImportDocument
             ) { trip in

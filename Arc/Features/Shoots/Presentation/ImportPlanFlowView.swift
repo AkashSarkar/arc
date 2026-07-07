@@ -4,15 +4,11 @@ import UIKit
 
 struct ImportPlanFlowView: View {
     let aiService: any AIServicing
-    let locationEditorServices: LocationEditorServiceFactory
     let onCommit: (Trip) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
-    @State private var locationViewModel: LocationEditorViewModel
-    @State private var step: ImportPlanStep = .location
-    @State private var locationDraft: LocationDraftValue?
     @State private var projectTitle: String
     @State private var planText: String
     @State private var document: ArcPlanDocument?
@@ -26,21 +22,12 @@ struct ImportPlanFlowView: View {
 
     init(
         aiService: any AIServicing,
-        locationEditorServices: LocationEditorServiceFactory,
         initialText: String = "",
         initialDocument: ArcPlanDocument? = nil,
         onCommit: @escaping (Trip) -> Void
     ) {
         self.aiService = aiService
-        self.locationEditorServices = locationEditorServices
         self.onCommit = onCommit
-        _locationViewModel = State(
-            initialValue: LocationEditorViewModel(
-                currentLocationService: locationEditorServices.makeCurrentLocationService(),
-                searchService: locationEditorServices.makeSearchService(),
-                reverseGeocodingService: locationEditorServices.makeReverseGeocodingService()
-            )
-        )
         _projectTitle = State(initialValue: initialDocument?.trip.title ?? "")
         _planText = State(initialValue: initialDocument?.sourceText ?? initialText)
         _document = State(initialValue: initialDocument)
@@ -57,24 +44,20 @@ struct ImportPlanFlowView: View {
         return draftTitle.isEmpty ? "Imported Plan" : draftTitle
     }
 
+    private var hasImportSource: Bool {
+        document != nil || !planText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var canCreatePlan: Bool {
-        locationDraft != nil
-            && !effectiveProjectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !planText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !effectiveProjectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && hasImportSource
             && draft.itemCount > 0
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch step {
-                case .location:
-                    locationStepScreen
-                case .plan:
-                    importForm
-                }
-            }
-            .navigationTitle(step.title)
+            importForm
+            .navigationTitle("Import Plan")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(isImprovingWithAI || isCommitting)
             .toolbar {
@@ -90,19 +73,6 @@ struct ImportPlanFlowView: View {
                 prepareInitialDraftIfNeeded()
             }
         }
-    }
-
-    private var locationStepScreen: some View {
-        ShootSpotPickerView(
-            viewModel: locationViewModel,
-            systemImage: "location.viewfinder",
-            title: "Choose Import Spot",
-            subtitle: "Pick the real starting spot for this imported plan.",
-            badges: [ArcHeroBadge(label: "Required", systemImage: "mappin.and.ellipse")],
-            primaryButtonTitle: "Continue",
-            primarySystemImage: "arrow.right",
-            primaryAction: continueFromLocation
-        )
     }
 
     private var importForm: some View {
@@ -141,13 +111,13 @@ struct ImportPlanFlowView: View {
         .background(ArcSceneBackground())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ArcBottomActionBar(
-                title: draft.itemCount > 0 ? "\(draft.stages.count) stages ready" : "Paste your Apple Notes plan",
-                subtitle: draft.itemCount > 0 ? "\(draft.itemCount) field items" : "Arc will structure it locally.",
-                primaryTitle: "Start Field Guide",
+                title: draft.itemCount > 0 ? "\(draft.stages.count) stages ready" : "Paste or open a plan",
+                subtitle: draft.itemCount > 0 ? "\(draft.itemCount) field items" : "No location pick is required.",
+                primaryTitle: "Start Guide",
                 primarySystemImage: "checkmark.circle",
                 isPrimaryLoading: isCommitting,
                 isPrimaryDisabled: !canCreatePlan || isImprovingWithAI || isCommitting,
-                secondaryTitle: "Improve with AI",
+                secondaryTitle: "AI Parse",
                 secondarySystemImage: "sparkles",
                 isSecondaryDisabled: !canImproveWithAI || isImprovingWithAI || isCommitting,
                 primaryAction: commitImportedPlan,
@@ -160,7 +130,7 @@ struct ImportPlanFlowView: View {
             rebuildLocalDraft()
         }
         .onChange(of: projectTitle) { _, _ in
-            rebuildLocalDraft()
+            retitleCurrentDraft()
         }
     }
 
@@ -172,8 +142,6 @@ struct ImportPlanFlowView: View {
                     title: "Import Existing Plan",
                     subtitle: "Paste or share a plan. Arc parses it locally first; smart parsing is optional."
                 )
-
-                selectedLocationCard
 
                 TextField("Project title", text: $projectTitle)
                     .textInputAutocapitalization(.words)
@@ -202,50 +170,11 @@ struct ImportPlanFlowView: View {
                         .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
                 }
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        pasteButton
-                        rebuildButton
-                        smartParseButton
-                        templateButton
-                    }
-
-                    VStack(spacing: 10) {
-                        pasteButton
-                        rebuildButton
-                        smartParseButton
-                        templateButton
-                    }
-                }
+                importActionGrid
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-        }
-    }
-
-    private var selectedLocationCard: some View {
-        ArcInlinePanel {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "mappin.and.ellipse")
-                    .foregroundStyle(ArcPalette.tint)
-                    .frame(width: 28, height: 28)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(locationDraft?.name ?? "No spot selected")
-                        .font(.subheadline.weight(.semibold))
-                    Text(locationDraft.map { "\($0.coordinate.latitude.formatted(.number.precision(.fractionLength(5)))), \($0.coordinate.longitude.formatted(.number.precision(.fractionLength(5))))" } ?? "A real spot is required before commit.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-
-                Button("Change") {
-                    step = .location
-                }
-                .buttonStyle(.glass)
-            }
         }
     }
 
@@ -302,6 +231,15 @@ struct ImportPlanFlowView: View {
         }
     }
 
+    private var importActionGrid: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 142), spacing: 10)], spacing: 10) {
+            pasteButton
+            rebuildButton
+            smartParseButton
+            templateButton
+        }
+    }
+
     private var pasteButton: some View {
         PasteButton(payloadType: String.self) { values in
             guard let value = values.first?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
@@ -313,14 +251,14 @@ struct ImportPlanFlowView: View {
             errorMessage = nil
         }
         .buttonStyle(.glass)
+        .frame(maxWidth: .infinity, minHeight: 44)
     }
 
     private var rebuildButton: some View {
         Button {
             rebuildLocalDraft()
         } label: {
-            Label("Basic Parse", systemImage: "arrow.clockwise")
-                .frame(maxWidth: .infinity)
+            ImportPlanActionLabel(title: "Parse", systemImage: "arrow.clockwise")
         }
         .buttonStyle(.glass)
         .disabled(planText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -330,8 +268,7 @@ struct ImportPlanFlowView: View {
         Button {
             Task { await parseWithBestTier(allowCloud: false) }
         } label: {
-            Label("Smart Parse", systemImage: "brain")
-                .frame(maxWidth: .infinity)
+            ImportPlanActionLabel(title: "Smart", systemImage: "brain")
         }
         .buttonStyle(.glass)
         .disabled(!canImproveWithAI || isImprovingWithAI || isCommitting)
@@ -342,8 +279,7 @@ struct ImportPlanFlowView: View {
             UIPasteboard.general.string = ArcPlanTemplate.text
             parseNotice = "ChatGPT template copied."
         } label: {
-            Label("Template", systemImage: "doc.on.doc")
-                .frame(maxWidth: .infinity)
+            ImportPlanActionLabel(title: "Template", systemImage: "doc.on.doc")
         }
         .buttonStyle(.glass)
     }
@@ -351,19 +287,6 @@ struct ImportPlanFlowView: View {
     private var canImproveWithAI: Bool {
         !effectiveProjectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !planText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func continueFromLocation() {
-        guard let draft = locationViewModel.validatedDraft() else {
-            return
-        }
-
-        locationDraft = draft
-        if projectTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            projectTitle = draft.name
-        }
-        errorMessage = nil
-        step = .plan
     }
 
     private func prepareInitialDraftIfNeeded() {
@@ -437,6 +360,16 @@ struct ImportPlanFlowView: View {
         errorMessage = nil
     }
 
+    private func retitleCurrentDraft() {
+        let title = effectiveProjectTitle
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        draft.title = title
+        document?.trip.title = title
+    }
+
     private func addStage() {
         draft.stages.append(
             FieldGuideStageDraft(
@@ -478,8 +411,8 @@ struct ImportPlanFlowView: View {
     }
 
     private func commitImportedPlan() {
-        guard canCreatePlan, let locationDraft else {
-            errorMessage = "Pick a real spot, add a title, paste a plan, and keep at least one field item."
+        guard canCreatePlan else {
+            errorMessage = "Add a title, paste or open a plan, and keep at least one field item."
             return
         }
 
@@ -493,15 +426,6 @@ struct ImportPlanFlowView: View {
         defer { isCommitting = false }
 
         let trip = TripDocumentMapper.trip(from: commitDocument, fallbackTitle: effectiveProjectTitle)
-        if let firstStop = trip.orderedStops.first {
-            if firstStop.latitude == nil || firstStop.longitude == nil {
-                firstStop.latitude = locationDraft.coordinate.latitude
-                firstStop.longitude = locationDraft.coordinate.longitude
-            }
-            if firstStop.placeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                firstStop.placeName = locationDraft.name
-            }
-        }
         modelContext.insert(trip)
 
         do {
@@ -520,20 +444,6 @@ struct ImportPlanFlowView: View {
         }
 
         return String(data: data, encoding: .utf8)
-    }
-}
-
-private enum ImportPlanStep {
-    case location
-    case plan
-
-    var title: String {
-        switch self {
-        case .location:
-            return "Choose Spot"
-        case .plan:
-            return "Import Plan"
-        }
     }
 }
 
@@ -580,6 +490,20 @@ private enum ArcPlanTemplate {
 
     <PASTE TRIP NOTES HERE>
     """
+}
+
+private struct ImportPlanActionLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+    }
 }
 
 private struct ImportedStageEditor: View {
@@ -650,44 +574,21 @@ private struct ImportedItemEditor: View {
             TextField("Guidance", text: $item.guidance, axis: .vertical)
                 .lineLimit(2, reservesSpace: true)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    Picker("Kind", selection: $item.kind) {
-                        ForEach(FieldGuideItemKind.allCases) { kind in
-                            Text(kind.title).tag(kind)
-                        }
+            VStack(alignment: .leading, spacing: 8) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        itemKindPicker
+                        itemPriorityPicker
                     }
-                    .pickerStyle(.menu)
 
-                    Picker("Priority", selection: $item.priority) {
-                        ForEach(FieldGuidePriority.allCases) { priority in
-                            Text(priority.title).tag(priority)
-                        }
+                    VStack(alignment: .leading, spacing: 8) {
+                        itemKindPicker
+                        itemPriorityPicker
                     }
-                    .pickerStyle(.segmented)
-
-                    Toggle("Before leaving", isOn: $item.isBeforeLeaving)
-                        .toggleStyle(.switch)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker("Kind", selection: $item.kind) {
-                        ForEach(FieldGuideItemKind.allCases) { kind in
-                            Text(kind.title).tag(kind)
-                        }
-                    }
-                    .pickerStyle(.menu)
-
-                    Picker("Priority", selection: $item.priority) {
-                        ForEach(FieldGuidePriority.allCases) { priority in
-                            Text(priority.title).tag(priority)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Toggle("Before leaving", isOn: $item.isBeforeLeaving)
-                        .toggleStyle(.switch)
-                }
+                Toggle("Before leaving", isOn: $item.isBeforeLeaving)
+                    .toggleStyle(.switch)
             }
 
             if item.isSynthetic {
@@ -700,5 +601,23 @@ private struct ImportedItemEditor: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
         }
+    }
+
+    private var itemKindPicker: some View {
+        Picker("Kind", selection: $item.kind) {
+            ForEach(FieldGuideItemKind.allCases) { kind in
+                Text(kind.title).tag(kind)
+            }
+        }
+        .pickerStyle(.menu)
+    }
+
+    private var itemPriorityPicker: some View {
+        Picker("Priority", selection: $item.priority) {
+            ForEach(FieldGuidePriority.allCases) { priority in
+                Text(priority.title).tag(priority)
+            }
+        }
+        .pickerStyle(.segmented)
     }
 }

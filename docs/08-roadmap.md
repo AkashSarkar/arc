@@ -10,8 +10,8 @@
 
 | Phase | Title | Gate to start | Status |
 |-------|-------|---------------|--------|
-| P0 | Stabilize | None | **In progress** — implemented, uncommitted (see working-tree status below) |
-| P1 | Import pipeline v2 + document format | P0 done | **In progress** — implemented, uncommitted (see working-tree status below) |
+| P0 | Stabilize | None | **In review** — implemented & committed; tests green; manual golden-path checks pending (see status below) |
+| P1 | Import pipeline v2 + document format | P0 done | **In review** — implemented & committed; tests green; manual golden-path checks pending (see status below) |
 | P2 | Schema v2 + timeline and map | P1 done | Not started |
 | P3 | Field ergonomics v2 + review/export v2 | G1 — see [docs/02-business.md](02-business.md) | Not started |
 | P4 | Guide export + share preview + email capture | G2 — see [docs/02-business.md](02-business.md) | Not started |
@@ -21,9 +21,9 @@ Update the Status column in the same PR that completes a phase's "Done when" lis
 
 ### Working-tree status (2026-07-07, branch `task-p0-p1-import-stabilization`)
 
-Uncommitted implementation of most P0 + P1 work items exists on this branch: parser v2 emitting `ArcPlanDocument` (day/stop/geo-anchor detection), `Arc/Core/Documents/ArcDocuments.swift` codec, `Arc/Services/AI/FoundationModelsPlanService.swift`, `ImportPlanIntent` + `ImportHandoff` (share/App Intent ingestion), the P0 defect fixes (required location pick, persisted `stageGoal`, safety-net dedup), and `ArcTests` with an 8-fixture import corpus.
+Most P0 + P1 work items are implemented and committed on this branch (commit `5f160a2`, pushed to `origin/task-p0-p1-import-stabilization`): parser v2 emitting `ArcPlanDocument` (day/stop/geo-anchor detection), `Arc/Core/Documents/ArcDocuments.swift` codec, `Arc/Services/AI/FoundationModelsPlanService.swift`, `ImportPlanIntent` + `ImportHandoff` (share/App Intent ingestion), the P0 defect fixes (required location pick, persisted `stageGoal`, safety-net dedup), and `ArcTests` with an 8-fixture import corpus. Not yet merged to `main`.
 
-State when work paused:
+Current state:
 
 - **Build + tests green (2026-07-07).** `xcodebuild test` on the iPhone 17 Pro (iOS 26.5) simulator reports `TEST SUCCEEDED`; all 6 `ArcTests` cases pass (codec round-trip, unknown-field tolerance, future-schema rejection, AFP template parsing, draft mapping, 8-fixture import corpus).
 - **Swift concurrency convention.** The project sets `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`; pure domain/document/parser types are marked `nonisolated` (applied across `FieldGuide.swift`, `ImportHandoff.swift`, `ArcDocuments.swift`, `ImportedPlanParser.swift`, `ImportedPlanGenerator.swift` extensions, `ImportPlanIntent.swift`, and the `ArcTests` files). Follow this convention for any new pure-logic type.

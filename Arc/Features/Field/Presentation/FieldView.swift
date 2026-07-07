@@ -50,7 +50,7 @@ struct FieldView: View {
     }
 
     private var nextPendingItem: CaptureItem? {
-        currentStage?.missingItems.first ?? trip.allItems.first(where: { !$0.isResolved })
+        currentStage?.fieldDisplayItems.first { !$0.isResolved }
     }
 
     private var completionProgress: Double {
@@ -318,10 +318,10 @@ struct FieldView: View {
 
     private var fieldActionBar: some View {
         FieldActionBar(
-            nextItemTitle: nextPendingItem?.title,
-            remainingCount: trip.missingCount,
+            primaryTitle: primaryFieldActionTitle,
+            primarySubtitle: primaryFieldActionSubtitle,
             isHighContrast: isHighContrastMode,
-            captureNext: captureNextPendingItem,
+            primaryAction: performPrimaryFieldAction,
             finishAction: { isConfirmingFinish = true }
         )
         .padding(.horizontal, 16)
@@ -363,6 +363,39 @@ struct FieldView: View {
 
         let titles = stage.unresolvedMustItems.prefix(3).map(\.title).joined(separator: ", ")
         return titles.isEmpty ? "This stage still has unresolved must-get items." : "Unresolved must-get items: \(titles)"
+    }
+
+    private var primaryFieldActionTitle: String {
+        if trip.missingCount == 0 {
+            return "All Items Resolved"
+        }
+
+        if nextPendingItem != nil {
+            return "Capture Next"
+        }
+
+        guard let stop = selectedStop else {
+            return "Find Remaining"
+        }
+
+        let currentPosition = currentStagePosition(in: stop)
+        return currentPosition + 1 >= stop.orderedStages.count ? "Next Stop" : "Next Stage"
+    }
+
+    private var primaryFieldActionSubtitle: String {
+        if let nextPendingItem {
+            return nextPendingItem.title
+        }
+
+        if trip.missingCount == 0 {
+            return "Ready to complete"
+        }
+
+        if let nextUnresolvedItem = trip.allItems.first(where: { !$0.isResolved }) {
+            return nextUnresolvedItem.title
+        }
+
+        return "Keep the guide moving"
     }
 
     private func activateTripIfNeeded() {
@@ -491,6 +524,18 @@ struct FieldView: View {
         playImpact(.light)
     }
 
+    private func markItemCaptured(_ item: CaptureItem) {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+            item.isCaptured = true
+            item.capturedAt = item.capturedAt ?? Date()
+            item.isSkipped = false
+            item.skippedAt = nil
+        }
+
+        try? modelContext.save()
+        playImpact(.light)
+    }
+
     private func toggleItemSkipped(_ item: CaptureItem) {
         withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
             item.isSkipped.toggle()
@@ -505,13 +550,63 @@ struct FieldView: View {
         playImpact(.light)
     }
 
-    private func captureNextPendingItem() {
+    private func performPrimaryFieldAction() {
         guard let nextPendingItem else {
+            guard trip.missingCount > 0 else {
+                isConfirmingFinish = true
+                return
+            }
+
+            moveToNextUnresolvedScope()
+            return
+        }
+
+        let capturedStage = nextPendingItem.stage
+        markItemCaptured(nextPendingItem)
+
+        if let capturedStage,
+           capturedStage.missingItems.isEmpty,
+           trip.missingCount > 0 {
+            moveForwardAfterClearedStage(capturedStage)
+        }
+    }
+
+    private func moveForwardAfterClearedStage(_ stage: Stage) {
+        guard let stop = stage.stop,
+              selectedStop?.id == stop.id
+        else {
+            moveToNextUnresolvedScope()
+            return
+        }
+
+        let stages = stop.orderedStages
+        guard let index = stages.firstIndex(where: { $0.id == stage.id }) else {
+            moveToNextUnresolvedScope()
+            return
+        }
+
+        if index + 1 < stages.count {
+            setStage(stages[index + 1].orderIndex, in: stop)
+            return
+        }
+
+        advanceToNextStop()
+    }
+
+    private func moveToNextUnresolvedScope() {
+        guard let nextUnresolvedItem = trip.allItems.first(where: { !$0.isResolved }) else {
             isConfirmingFinish = true
             return
         }
 
-        toggleItemCompletion(nextPendingItem)
+        if let stop = nextUnresolvedItem.stage?.stop {
+            selectStop(stop)
+        }
+
+        if let stage = nextUnresolvedItem.stage,
+           let stop = stage.stop {
+            setStage(stage.orderIndex, in: stop)
+        }
     }
 
     private func attachPhoto(_ pickerItem: PhotosPickerItem?, to item: CaptureItem) {
@@ -911,19 +1006,15 @@ private struct FieldStageCard: View {
     let editNote: (CaptureItem) -> Void
 
     private var mustCaptureItems: [CaptureItem] {
-        stage.orderedItems.filter { $0.priority == .must && !$0.isBeforeLeaving }
+        stage.fieldMustItems
     }
 
     private var optionalItems: [CaptureItem] {
-        stage.orderedItems.filter { $0.priority == .optional && !$0.isBeforeLeaving }
-    }
-
-    private var voiceSoundTransitionItems: [CaptureItem] {
-        stage.orderedItems.filter { ($0.kind == .voice || $0.kind == .sound || $0.kind == .transition) && !$0.isBeforeLeaving }
+        stage.fieldOptionalItems
     }
 
     private var beforeLeavingItems: [CaptureItem] {
-        stage.orderedItems.filter(\.isBeforeLeaving)
+        stage.fieldBeforeLeavingItems
     }
 
     var body: some View {
@@ -949,20 +1040,6 @@ private struct FieldStageCard: View {
                 removePhoto: removePhoto,
                 editNote: editNote
             )
-
-            if !voiceSoundTransitionItems.isEmpty {
-                FieldItemSection(
-                    title: "Voice, sound, transitions",
-                    emptyMessage: "",
-                    items: voiceSoundTransitionItems,
-                    tint: isHighContrast ? .white : ArcPalette.glowSecondary,
-                    toggleCaptured: toggleCaptured,
-                    toggleSkipped: toggleSkipped,
-                    attachPhoto: attachPhoto,
-                    removePhoto: removePhoto,
-                    editNote: editNote
-                )
-            }
 
             if !optionalItems.isEmpty {
                 FieldItemSection(
@@ -1263,19 +1340,19 @@ private struct SafetyNetTemplate: Identifiable {
 }
 
 private struct FieldActionBar: View {
-    let nextItemTitle: String?
-    let remainingCount: Int
+    let primaryTitle: String
+    let primarySubtitle: String
     let isHighContrast: Bool
-    let captureNext: () -> Void
+    let primaryAction: () -> Void
     let finishAction: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            Button(action: captureNext) {
+            Button(action: primaryAction) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(remainingCount == 0 ? "All items resolved" : "Capture Next")
+                    Text(primaryTitle)
                         .font(.subheadline.weight(.semibold))
-                    Text(nextItemTitle ?? "Ready to complete")
+                    Text(primarySubtitle)
                         .font(.caption)
                         .lineLimit(1)
                 }
@@ -1292,6 +1369,24 @@ private struct FieldActionBar: View {
             .accessibilityLabel("Complete trip")
         }
         .tint(isHighContrast ? .white : ArcPalette.tint)
+    }
+}
+
+private extension Stage {
+    var fieldMustItems: [CaptureItem] {
+        orderedItems.filter { $0.priority == .must && !$0.isBeforeLeaving }
+    }
+
+    var fieldOptionalItems: [CaptureItem] {
+        orderedItems.filter { $0.priority == .optional && !$0.isBeforeLeaving }
+    }
+
+    var fieldBeforeLeavingItems: [CaptureItem] {
+        orderedItems.filter(\.isBeforeLeaving)
+    }
+
+    var fieldDisplayItems: [CaptureItem] {
+        fieldMustItems + fieldOptionalItems + fieldBeforeLeavingItems
     }
 }
 

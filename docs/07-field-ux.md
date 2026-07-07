@@ -81,7 +81,7 @@ Verified against the Trip-backed `FieldView` on `task-owner-mvp-through-p4` (202
 |-------------|----------|
 | Trip timeline | Horizontal stop timeline shows stop status and resolved item count; tapping a stop makes it active and sets arrival time if needed. |
 | Map | MapKit panel renders stops with resolved coordinates; unresolved stops stay in the timeline and info sheet with a needs-location state. |
-| Stage mantra | Header/stage card use `Stage.mantra` (`Stage.goal` plus unresolved must count). The bottom "Capture Next" action marks the next unresolved item captured. |
+| Stage mantra | Header/stage card use `Stage.mantra` (`Stage.goal` plus unresolved must count). The bottom primary action marks the next visible unresolved item in the current stage as captured; once the current stage is clear, the same control moves to the next stage/stop or finds the next unresolved scope instead of capturing hidden items. |
 | Capture / skip | Mutually exclusive toggles: capturing clears skipped and vice versa; both set provenance timestamps (`capturedAt` / `skippedAt`). |
 | Field note | Per-item note editor writes `CaptureItem.fieldNote`; non-empty notes render inline on the item row and export summary. |
 | Photo attach | PhotosPicker per item; attaching stores photo data, marks captured, and clears skipped. |

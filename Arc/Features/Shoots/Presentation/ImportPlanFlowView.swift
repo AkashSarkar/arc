@@ -117,13 +117,7 @@ struct ImportPlanFlowView: View {
                 primarySystemImage: "checkmark.circle",
                 isPrimaryLoading: isCommitting,
                 isPrimaryDisabled: !canCreatePlan || isImprovingWithAI || isCommitting,
-                secondaryTitle: "AI Parse",
-                secondarySystemImage: "sparkles",
-                isSecondaryDisabled: !canImproveWithAI || isImprovingWithAI || isCommitting,
-                primaryAction: commitImportedPlan,
-                secondaryAction: {
-                    Task { await parseWithBestTier(allowCloud: true) }
-                }
+                primaryAction: commitImportedPlan
             )
         }
         .onChange(of: planText) { _, _ in
@@ -170,7 +164,7 @@ struct ImportPlanFlowView: View {
                         .stroke(ArcPalette.surfaceStroke, lineWidth: 1)
                 }
 
-                importActionGrid
+                importActionStack
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             .listRowBackground(Color.clear)
@@ -231,10 +225,11 @@ struct ImportPlanFlowView: View {
         }
     }
 
-    private var importActionGrid: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
+    private var importActionStack: some View {
+        VStack(spacing: 10) {
             pasteButton
             rebuildButton
+            aiParseButton
             templateButton
         }
     }
@@ -261,6 +256,16 @@ struct ImportPlanFlowView: View {
         }
         .buttonStyle(.glass)
         .disabled(planText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    private var aiParseButton: some View {
+        Button {
+            Task { await parseWithBestTier(allowCloud: true) }
+        } label: {
+            ImportPlanActionLabel(title: "AI Parse", systemImage: "sparkles")
+        }
+        .buttonStyle(.glass)
+        .disabled(!canImproveWithAI || isImprovingWithAI || isCommitting)
     }
 
     private var templateButton: some View {
@@ -486,12 +491,16 @@ private struct ImportPlanActionLabel: View {
     let systemImage: String
 
     var body: some View {
-        Label(title, systemImage: systemImage)
-            .font(.subheadline.weight(.semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.85)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .contentShape(Rectangle())
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .contentShape(Rectangle())
     }
 }
 
